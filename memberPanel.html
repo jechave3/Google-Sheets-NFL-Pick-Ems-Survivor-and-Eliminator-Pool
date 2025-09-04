@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <!-- Include the SortableJS library for drag-and-drop functionality -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; overflow-x: hidden; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100;  }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    .container { padding: 20px; }
+    .header-row { display: flex; align-items: center; padding: 0 10px 5px 40px; margin-bottom: 5px; border-bottom: 2px solid #E8EAED; font-size: 12px; font-weight: 600; color: #5E5E5E; text-transform: uppercase; }
+    .header-row .col-name { flex: 1; }
+    .header-row .col-paid { width: 60px; text-align: center; }
+    .header-row .col-revive { width: 80px; text-align: center; }
+    .header-row .col-remove { width: 40px; }
+    #member-list { list-style: none; padding: 0; margin: 0; }
+    .member-row { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid #f0f0f0; background-color: #fff; }
+    .member-row:hover { background-color: #f8f9fa; }
+    .drag-handle { width: 30px; cursor: grab; text-align: left; color: #B0B0B0; font-size: 18px; }
+    .drag-handle:active { cursor: grabbing; }
+    .member-name { flex: 1; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; }
+    .member-name:disabled { background-color: #f0f0f0; cursor: not-allowed; color: #555; }
+    .member-paid { width: 60px; text-align: center; }
+    .member-paid input[type="checkbox"] {   width: 18px;   height: 18px;   accent-color: #013369; }
+    .member-revive { width: 80px; text-align: center; }
+    .revive-btn { padding: 5px 10px; font-size: 14px; font-weight: 600; background-color: #e9ecef; color: #adb5bd; border: 1px solid #dee2e6; border-radius: 4px; cursor: not-allowed; transition: all 0.2s ease; }
+    .revive-btn.active {
+      background-color: #013369;
+      color: white;
+      border: 0px; 
+      cursor: pointer;
+    }
+    .revive-btn.active:hover {
+      background-color: #2067b3;
+    }
+    .member-remove { width: 40px; text-align: right; }
+    .remove-btn { background: none; border: none; color: #D50A0A; font-size: 20px; font-weight: 700; cursor: pointer; }
+    .remove-btn:disabled { color: #B0B0B0; cursor: not-allowed; }
+    .add-member-section,
+    .button-section { padding: 16px 20px; }
+    .add-member-btn { width: 100%; padding: 8px 14px; border: 1px solid #013369; color: #013369; background-color: #fff; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }.add-member-btn:hover { background-color: #f0f5fa; }
+    .button-row { display: flex; gap: 8px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    #confirm-dialog-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 200; }
+    .confirm-dialog { background-color: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 350px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    .confirm-dialog h3 { margin-top: 0; color: #333; }
+    .confirm-dialog p { color: #555; }
+    .confirm-dialog
+    .deleted-names { background-color: #fff0f0; border: 1px solid #ffdddd; border-radius: 4px; padding: 12px 12px; margin-top: 15px; margin-bottom: 15px; text-align: left; }
+    .confirm-dialog .deleted-names strong { display: block; margin-bottom: 5px; color: #D50A0A; }
+    .confirm-dialog
+    .deleted-names ul { margin: 0; padding-left: 20px; }
+  </style>
+</head>
+
+<body>
+
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+  </div>
+
+  <div class="container" id="form-container">
+    <div class="header-row">
+      <div class="col-name">Name</div>
+      <div class="col-paid">Paid</div>
+      <div class="col-revive" id="header-revive-survivor">Revive Survivor</div>
+      <div class="col-revive" id="header-revive-eliminator">Revive Eliminator</div>
+      <div class="col-remove"></div>
+    </div>
+    
+    <ul id="member-list">
+      <!-- Member rows will be dynamically inserted here -->
+    </ul>
+
+    <div class="add-member-section">
+      <button type="button" class="add-member-btn" id="add-member">+ Add Member</button>
+    </div>
+  </div>
+
+  <div class="button-section">
+    <div class="button-row">
+      <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="handleSubmit()">Save Members</button>
+    </div>
+  </div>
+
+  <div id="confirm-dialog-overlay" class="hidden">
+    <div class="confirm-dialog">
+      <h3>Confirm Deletion</h3>
+      <p>Are you sure you want to permanently delete the following member(s)? This action will remove their entire row from all sheets.</p>
+      <div class="deleted-names">
+        <strong>Members to be deleted:</strong>
+        <ul id="deleted-names-list">
+          <!-- Names will be inserted here by JavaScript -->
+        </ul>
+      </div>
+      <div class="button-row">
+        <button type="button" class="btn btn-secondary" id="confirm-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="confirm-delete-btn">Yes, Remove</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+    let week = 1;
+    let height = document.documentElement.scrollHeight;
+    const minHeight = document.documentElement.scrollHeight;
+    let initialMemberOrder = [];
+    let shouldShowReviveSurvivor = false;
+    let shouldShowReviveEliminator = false;
+    const loader = document.getElementById('loading-overlay');
+    function showLoader() {
+      if (loader) {
+        loader.classList.remove('hidden');
+      }
+    }
+    function hideLoader() {
+      if (loader) {
+        loader.classList.add('hidden');
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      showLoader();
+      
+      // ... the rest of your setup code ...
+      const memberList = document.getElementById('member-list');
+      const addMemberBtn = document.getElementById('add-member');
+
+      // Initialize SortableJS for drag-and-drop
+      new Sortable(memberList, {
+          animation: 150,
+          handle: '.drag-handle',
+      });
+
+      // Event listener for the "Add Member" button remains the same
+      addMemberBtn.addEventListener('click', addMemberRow);
+      
+      // Event delegation for remove buttons remains the same
+      memberList.addEventListener('click', function(e) {
+          if (e.target && e.target.classList.contains('remove-btn')) {
+            const row = e.target.closest('.member-row');
+            row.remove();
+            updateRemoveButtons();
+            height = Math.max(minHeight,Math.min(height - (shouldShowReviveSurvivor || shouldShowReviveEliminator ? 55 : 46),700));
+            google.script.host.setHeight(height);
+          }
+          if (e.target.classList.contains('revive-survivor-btn')) {
+            handleReviveClick(e.target.dataset.memberId, 'survivor');
+          }
+          if (e.target.classList.contains('revive-eliminator-btn')) {
+            handleReviveClick(e.target.dataset.memberId, 'eliminator');
+          }
+          
+      });
+
+      google.script.run
+        .withSuccessHandler(populateMemberList)
+        .withFailureHandler(onDataFetchFailure) // Use a dedicated failure handler
+        .getMembersSidebarData();
+    });
+
+    function onDataFetchFailure(error) {
+        console.error('Error fetching member data:', error);
+        alert('Could not load member data. Please try closing and reopening the panel.');
+        hideLoader();
+    }
+
+    /**
+     * This function is called after the server returns the member data.
+     * It builds the UI based on the fetched data.
+     */
+    function populateMemberList(data) {
+      try {
+        const { week, memberData, showReviveSurvivorButtons, showReviveEliminatorButtons } = data;
+        const memberList = document.getElementById('member-list');
+        initialMemberData = JSON.parse(JSON.stringify(memberData));
+        // Store the setting globally so other functions can access it.
+        shouldShowReviveSurvivor = showReviveSurvivorButtons;
+        shouldShowReviveEliminator = showReviveEliminatorButtons;
+
+        // Hide or show the static header column based on the setting.
+        document.getElementById('header-revive-survivor').style.display = shouldShowReviveSurvivor ? '' : 'none';
+        document.getElementById('header-revive-eliminator').style.display = shouldShowReviveEliminator ? '' : 'none';
+
+        if (memberData && memberData.memberOrder && memberData.memberOrder.length > 0) {
+          memberData.memberOrder.forEach(memberId => {
+            const memberDetails = memberData.members[memberId];
+            if (memberDetails) {
+              const newRow = createMemberRow(memberId, memberDetails, true, week);
+              memberList.appendChild(newRow);
+            }
+          });
+        } else {
+          addMemberRow();
+        }
+        updateRemoveButtons();
+      } catch (error) {
+        console.error("An error occurred while populating the member list:", error);
+      } finally {
+        hideLoader();
+      }
+    }
+
+    function buildListFromData(memberDataObject) {
+        const memberList = document.getElementById('member-list');
+        memberList.innerHTML = ''; // Clear the list completely before rebuilding
+
+        if (memberDataObject && memberDataObject.order && memberDataObject.order.length > 0) {
+            memberDataObject.order.forEach(name => {
+                const details = memberDataObject.details[name] || {};
+                const isPaid = details.paid || false;
+                const newRow = createMemberRow(name, isPaid, true, week);
+                memberList.appendChild(newRow);
+            });
+        }
+        updateRemoveButtons();
+    }    
+
+    /**
+     * Factory function to create a new member row element, adds revives, paid, and locks modification if existing
+     */
+    function createMemberRow(memberId, details = {}, isLocked = false, week) {
+      const li = document.createElement('li');
+      li.className = 'member-row';
+      // Store the unique ID directly on the row element
+      li.dataset.memberId = memberId;
+
+      const name = details.name || '';
+      const isPaid = details.paid || false;
+      const disabledAttribute = isLocked ? 'disabled' : '';
+
+      // --- [NEW] Revive Button Logic ---
+      // A button is enabled if the feature is on AND the member has 0 lives.
+      const isEligibleForSurvivorRevive = shouldShowReviveSurvivor && Array.isArray(details.sL) && details.sL[week - 1] === 0;
+      const isEligibleForEliminatorRevive = shouldShowReviveEliminator && Array.isArray(details.eL) && details.eL[week - 1] === 0;
+      
+      const survivorBtnClass = `revive-btn revive-survivor-btn ${isEligibleForSurvivorRevive ? 'active' : ''}`;
+      const eliminatorBtnClass = `revive-btn revive-eliminator-btn ${isEligibleForEliminatorRevive ? 'active' : ''}`;
+
+      const reviveSurvivorColumnHtml = shouldShowReviveSurvivor
+        ? `<div class="member-revive">
+             <button type="button" class="${survivorBtnClass}" data-member-id="${memberId}">👑</button>
+           </div>`
+        : '';
+      
+      const reviveEliminatorColumnHtml = shouldShowReviveEliminator
+        ? `<div class="member-revive">
+             <button type="button" class="${eliminatorBtnClass}" data-member-id="${memberId}">💀</button>
+           </div>`
+        : '';
+
+      li.innerHTML = `
+        <div class="drag-handle">☰</div>
+        <input type="text" class="member-name" placeholder="Enter member's name" value="${name}" ${disabledAttribute}>
+        <div class="member-paid"><input type="checkbox" ${isPaid ? 'checked' : ''}></div>
+        ${reviveSurvivorColumnHtml}
+        ${reviveEliminatorColumnHtml}
+        <div class="member-remove"><button type="button" class="remove-btn">&times;</button></div>
+      `;
+      height = Math.max(minHeight,Math.min(height + (shouldShowReviveSurvivor || shouldShowReviveEliminator ? 55 : 46),700));
+      google.script.host.setHeight(height);
+      return li;
+    }
+    
+    /**
+     * Disables or enables remove buttons based on the number of rows.
+     * (Unchanged)
+     */
+    function updateRemoveButtons() {
+        const rows = document.getElementById('member-list').querySelectorAll('.member-row');
+        const isDisabled = rows.length <= 2;
+        rows.forEach(row => {
+            row.querySelector('.remove-btn').disabled = isDisabled;
+        });
+    }
+
+    /**
+     * Adds a new member row to the list and updates button states.
+     */
+    function addMemberRow() {
+      // createMemberRow will automatically use the `shouldShowReviveSurvivor` global variable.
+      const newRow = createMemberRow(`new_${new Date().getTime()}`, {}, false);
+      document.getElementById('member-list').appendChild(newRow);
+      updateRemoveButtons();
+    }
+
+    /**
+     * Handles the click on a revive button, showing a confirmation.
+     */
+    function handleReviveClick(memberId, gameType) {
+      // --- [ADD THIS GUARD CLAUSE] ---
+      const button = event.target; // Get the button element that was clicked
+      if (!button.classList.contains('active')) {
+        // If the button is not active, do nothing.
+        return;
+      }
+      
+      const memberName = initialMemberData.members[memberId]?.name || 'this member';
+      const confirmed = confirm(`Are you sure you want to use a revive for ${memberName} in the ${gameType} pool?`);
+      
+      if (confirmed) {
+        // Here, we would call a server-side function to update the data.
+        showLoader();
+        google.script.run
+            .withSuccessHandler(onReviveSuccess)
+            .withFailureHandler(onDataFetchFailure)
+            .processReviveMember({ memberId: memberId, gameType: gameType, week: week});
+      }
+    }
+    /**
+     * The success handler for the revive action.
+     * It receives the fresh memberData from the server and redraws the UI.
+     */
+    function onReviveSuccess(response) {
+      hideLoader();
+      alert(response.message); // Show the success message
+
+      const updatedMemberData = response.updatedMemberData;
+      
+      // Update our global state with the fresh data from the server.
+      initialMemberData = JSON.parse(JSON.stringify(updatedMemberData));
+      
+      // --- Re-render the member list ---
+      const memberList = document.getElementById('member-list');
+      memberList.innerHTML = ''; // Clear the old list
+      
+      const week = 1; // You'll need to get the currently selected week if you add a week selector
+      
+      // Use the same logic as populateMemberList to rebuild the rows
+      if (updatedMemberData && updatedMemberData.memberOrder) {
+        updatedMemberData.memberOrder.forEach(memberId => {
+          const memberDetails = updatedMemberData.members[memberId];
+          if (memberDetails) {
+            // Re-create the row. The createMemberRow function will now see that the
+            // member's lives are no longer 0 and will render the button as disabled.
+            const newRow = createMemberRow(memberId, memberDetails, true, week);
+            memberList.appendChild(newRow);
+          }
+        });
+      }
+      
+      // Ensure the add/remove buttons are in the correct state
+      updateRemoveButtons();
+    }
+
+    /**
+     * Collects all member data, performs advanced validation (trims names,
+     * ignores blank rows, checks for CASE-INSENSITIVE duplicates), and sends the clean data to the server.
+     */
+    function handleSubmit() {
+      const currentState = { memberOrder: [], members: {} };
+      let newMemberCounter = 0;
+      let namesForDuplicateCheck = [];
+
+      document.querySelectorAll('#member-list .member-row').forEach(row => {
+        let memberId = row.dataset.memberId;
+        const nameInput = row.querySelector('.member-name');
+        const name = nameInput.value.trim();
+        const isPaid = row.querySelector('.member-paid input').checked;
+
+        if (!name) return; // Skip blank rows
+
+        if (!memberId) {
+          // This is a NEW member. Generate a temporary client-side ID.
+          memberId = `new_${newMemberCounter++}`;
+        }
+        
+        // Add the ID to the order array
+        currentState.memberOrder.push(memberId);
+        
+        // Add the details to the members object
+        currentState.members[memberId] = {
+          name: name,
+          paid: isPaid
+          };
+      });
+      
+      // --- Step 2: Perform Validation (Duplicate Names) ---
+      const nameMap = {};
+      namesForDuplicateCheck.forEach(name => {
+        const lowerCaseName = name.toLowerCase();
+        if (!nameMap[lowerCaseName]) nameMap[lowerCaseName] = [];
+        nameMap[lowerCaseName].push(name);
+      });
+
+      const duplicateGroups = Object.values(nameMap).filter(group => group.length > 1);
+      if (duplicateGroups.length > 0) {
+        alert(`Duplicate names are not allowed. Please fix: ${duplicateGroups.flat().join(', ')}`);
+        return;
+      }
+      
+      // --- Step 3: Deletion Check ---
+      const initialIds = initialMemberData.memberOrder || [];
+      const currentIds = currentState.memberOrder;
+      const deletedIds = initialIds.filter(id => !currentIds.includes(id));
+
+      if (deletedIds.length > 0) {
+        // Deletions were found. Show the confirmation dialog.
+        // We now pass the ID-based data to the dialog handlers.
+        const deletedNames = deletedIds.map(id => initialMemberData.members[id]?.name || 'Unknown');
+        showConfirmationDialog(deletedNames, currentState);
+      } else {
+        // No deletions. Proceed directly to the final submission.
+        submitDataToServer(currentState);
+      }
+    }
+    
+    function submitDataToServer(dataObject) {
+      showLoader(); // Show the loader on final submit
+      
+      console.log("Submitting validated data to server:", dataObject);
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(onSubmitFailure)
+        .processMemberSubmission(dataObject);
+    }
+
+
+    function showConfirmationDialog(deletedNames, currentStateWithEdits) {
+      const dialogOverlay = document.getElementById('confirm-dialog-overlay');
+      const listElement = document.getElementById('deleted-names-list');
+      
+      listElement.innerHTML = ''; // Clear previous entries
+      deletedNames.forEach(name => {
+        const li = document.createElement('li');
+        li.textContent = name;
+        listElement.appendChild(li);
+      });
+
+      dialogOverlay.classList.remove('hidden');
+
+      // --- The "Cancel" button now has the NEW logic ---
+      document.getElementById('confirm-cancel-btn').onclick = () => {
+        console.log("Deletion canceled. Restoring deleted members but keeping edits.");
+        dialogOverlay.classList.add('hidden');
+        
+        // Rebuild the UI using the initial data. This restores deleted members.
+        // Then, we could apply the renames/reorders from `currentStateWithEdits`.
+        // A simpler, effective approach is just to rebuild from the initial data.
+        buildListFromData(initialMemberData);
+      };
+      // --- The "Confirm" button submits the already-gathered current state ---
+      document.getElementById('confirm-delete-btn').onclick = () => {
+        dialogOverlay.classList.add('hidden');
+        console.log("Deletion confirmed. Submitting changes.");
+        submitDataToServer(currentStateWithEdits);
+      };
+    }
+    
+    function onSubmitSuccess(response) {
+      hideLoader();
+      console.log(response);
+      alert('Members saved successfully!');
+      google.script.host.close();
+    }
+
+    function onSubmitFailure(error) {
+      hideLoader();
+      alert('Error saving members: ' + error.message);
+    }
+</script>
+</body>
+</html>
