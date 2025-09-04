@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; }
+    .container { padding: 20px; }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-bottom: 20px; }
+    h2 { margin: 0; color: #013369; }
+    .stats { text-align: right; font-size: 13px; color: #555; }
+    table { width: 100%; border-collapse: collapse; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { padding: 8px; text-align: middle; border-bottom: 1px solid #eee; }
+    th { font-size: 12px; font-weight: 600; text-transform: uppercase; color: #555; }
+    tr.current-week { background-color: #e7f0fa !important; border-left: 4px solid #013369; }
+    .btn-icon { background: none; border: none; cursor: pointer; padding: 4px; }
+    .btn-icon:hover svg { fill: #013369; }
+    .icon { width: 16px; height: 16px; fill: #555; vertical-align: middle; align-items: center; margin: 0 1px; }
+    .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; }
+    .status-active { background-color: #28a745; }
+    .status-inactive { background-color: #dc3545; }
+    .respondent-toggle { cursor: pointer; text-decoration: underline; color: #013369; }
+    .respondent-toggle.disabled { text-decoration: none; color: #999; cursor: default; }
+    .respondent-list { display: none; background: #f8f9fa; padding: 10px; font-size: 12px; }
+    .respondent-list ul { margin: 0; padding-left: 20px; }
+    .action-buttons { display: flex; gap: 5px;}
+    .btn-small { width: 70px; padding: 4px 8px; font-size: 12px; font-weight: 500; border: none; border-radius: 4px; cursor: pointer; color: white; }
+    .btn-primary { background-color: #013369; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #878787; }
+    .btn-secondary:hover { background-color: #A8A8A8; }
+    .btn-activate { background-color: #28a745; }
+    .btn-activate:hover { background-color: #218838; }
+    .btn-deactivate { background-color: #D50A0A; }
+    .btn-deactivate:hover { background-color: #c82333; }
+    .btn-alert { background-color: #ff913d; color: #ffecde; }
+    .btn-alert:hover { background-color: #e86705; }
+    .last-response-time { font-style: italic; color: #777; margin-left: 10px; }
+    .switch { position: relative; display: inline-block; width: 36px; height: 20px; transform: scale(0.8); }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-small { transform: scale(0.8); }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #999; transition: 0.3s; border-radius: 10px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: 0.3s; border-radius: 50%; }
+    input:checked+.slider { background-color: #D50A0A; }
+    input:checked+.slider:before { transform: translateX(16px); }
+    .tooltip { position: relative; display: inline-block; cursor: help; }
+    .tooltip .tooltiptext { text-transform: none; visibility: hidden; font-size: 10pt; width: 200px; background-color: #ffffff; border-radius: 6px; border: 2px solid #D50A0A; color: #000000; text-align: center; padding: 5px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.5s; }
+    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+    .numeric-cell { font-weight: bold; text-align: center; color: #013369; }
+  </style>
+</head>
+<body>
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+  </div>
+  
+  <div id="dashboard-content" class="hidden">
+    <div class="container">
+      <div class="header">
+        <h2 id="group-name"></h2>
+        <div class="stats">
+          Total Members: <strong id="total-members"></strong><br>
+          Overall Response Rate: <strong id="response-rate"></strong>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align: center" >Week</th>
+            <th class="tooltip">Form Actions<span class="tooltiptext">Tools to manager your form. Lock the form to prevent new responses.</span></span></th>
+            <th><span class="tooltip" style="text-align: center" >🔄<span class="tooltiptext">A trigger is active for this form to monitor submissions. Disable if no longer using this form.</span></span></th>
+            <th><span class="tooltip" style="text-align: center" >📪<span class="tooltiptext">Form is active and accepting responses if 📖, inactive if 📕</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="Pick\'em">🏈<span class="tooltiptext">The form is collecting responses for a pick 'ems pool (☑️: Straight, 🔢: ATS)</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="Survivor">👑<span class="tooltiptext">The form is collecting responses for a survivor pool (☑️: Straight, 🔢: ATS)</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="Eliminator">💀<span class="tooltiptext">The form is collecting responses for an eliminator pool (☑️: Straight, 🔢: ATS)</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="Membership Open">✏️<span class="tooltiptext">The form allows for new members to manually enter their name at the end</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="Picks Imported">📥<span class="tooltiptext">Whether the picks have been imported to the sheet yet.</span></span></th>
+            <th><span style="text-align: center" class="tooltip" title="New Members Added">⭐<span class="tooltiptext">The number of new members registered with this form</span></span></th>
+            <th><span class="tooltip" style="text-align: center" >🏆<span class="tooltiptext">Total competitions available within the form</span></span></th>
+            <th><span style="text-align: center" class="tooltip" >Responses<span class="tooltiptext">Response rate show of registered members.</span></span></th>
+          </tr>
+        </thead>
+        <tbody id="forms-table-body">
+          <!-- Rows will be built here by JavaScript -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    let dashboardData = {};
+    let height = document.documentElement.scrollHeight;
+    const minHeight = document.documentElement.scrollHeight;
+
+    document.addEventListener('DOMContentLoaded', function() {
+      showLoader();
+      google.script.run
+        .withSuccessHandler(buildDashboard)
+        .withFailureHandler(err => alert(err.message))
+        .getFormDashboardData();
+      document.getElementById('forms-table-body').addEventListener('click', handleTableClick);
+    });
+    
+    const loader = document.getElementById('loading-overlay');
+    function showLoader() {
+      if (loader) {
+        loader.classList.remove('hidden');
+      }
+    }
+    function hideLoader() {
+      if (loader) {
+        loader.classList.add('hidden');
+      }
+    }
+    
+    function handleTableClick(e) {
+      const target = e.target;
+
+      if (target.matches('input[data-action="toggle-autosync"]')) {
+        const formId = target.dataset.formId;
+        const isEnabled = target.checked;
+        
+        // Disable the slider temporarily to prevent rapid clicking
+        target.disabled = true;
+        
+        google.script.run
+          .withSuccessHandler(response => {
+            // Re-enable the slider on success
+            target.disabled = false;
+            console.log(`Auto-sync for form ${formId} set to ${response.newStatus}`);
+          })
+          .withFailureHandler(err => {
+            alert(err.message);
+            target.checked = !isEnabled; // Revert the checkbox on failure
+            target.disabled = false;
+          })
+          .setFormSubmitTrigger(formId, isEnabled);
+        return; // Stop further processing
+      }
+            
+      const button = e.target.closest('button');
+      if (!button) return;
+
+      const action = button.dataset.action;
+      const url = button.dataset.url;
+      const formId = button.dataset.formId;
+
+      if (action === 'edit') {
+        window.open(url, '_blank');
+      } else if (action === 'open') {
+        window.open(url, '_blank');
+      } else if (action === 'copy') {
+        copyToClipboard(url, button);
+      } else if (action === 'toggle-status') {
+        button.textContent = '⏳...'; // Show immediate feedback
+        button.disabled = true;
+        google.script.run
+          .withSuccessHandler(response => onStatusToggled(formId, response.newStatus))
+          .withFailureHandler(err => alert(err.message))
+          .toggleFormStatus(formId);
+      } else if (action === 'toggle-respondents') {
+        const week = button.dataset.week;
+        document.getElementById(`list-row-${week}`).classList.toggle('hidden');
+      }
+    }
+
+    function copyToClipboard(text, buttonElement) {
+      navigator.clipboard.writeText(text).then(() => {
+        // --- Provide visual feedback ---
+        const originalHtml = buttonElement.innerHTML;
+        buttonElement.innerHTML = '✅ Copied!';
+        buttonElement.disabled = true;
+        setTimeout(() => {
+          buttonElement.innerHTML = originalHtml;
+          buttonElement.disabled = false;
+        }, 1500); // Revert after 1.5 seconds
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        // Fallback for older browsers
+        prompt("Copy this link:", text);
+      });
+    }
+
+    /**
+     * Callback function to update the UI after a form's status is toggled.
+     */
+    function onStatusToggled(formId, newStatus) {
+      const button = document.querySelector(`button[data-action="toggle-status"][data-form-id="${formId}"]`);
+      const statusDot = document.getElementById(`status-dot-${formId}`);
+
+      if (button && statusDot) {
+        button.disabled = false;
+        button.textContent = newStatus ? '🔒 Lock' : '🔓 Unlock'
+        button.className = `btn-small ${newStatus ? 'btn-deactivate' : 'btn-activate'}`;
+        statusDot.title = newStatus ? 'Accepting Responses' : 'Not Accepting';
+        statusDot.textContent = (newStatus ? '📖' : '📕')
+      }
+    }
+
+    /**
+     * Builds the complete dashboard with the new button layout.
+     */
+    function buildDashboard(data) {
+      dashboardData = data;
+      google.script.host.setHeight(Math.min(height + data.forms.length * 42,700));
+      document.getElementById('group-name').textContent = data.groupName;
+      document.getElementById('total-members').textContent = data.totalMembers;
+      document.getElementById('response-rate').textContent = `${(data.overallResponseRate * 100).toFixed(0)}%`;
+      
+      const tableBody = document.getElementById('forms-table-body');
+      let tableHtml = '';
+      
+      data.forms.forEach(form => {
+        const isCurrentWeek = form.week == data.currentApiWeek;
+        const respondentNumber = form.respondents.length;
+        const responseRate = data.totalMembers > 0 ? (respondentNumber / data.totalMembers) : 0;
+        const newMemberCount = form.newMembers ? form.newMembers.length : 0;
+
+        const toggleButtonText = form.isActive ? '🔒 Lock' : '🔓 Unlock';
+        const toggleButtonClass = form.isActive ? 'btn-deactivate' : 'btn-activate';
+        
+
+        const autoSyncChecked = form.autoSync ? 'checked' : '';
+        const autoSyncSlider = `
+          <label class="switch">
+            <input type="checkbox" data-action="toggle-autosync" data-form-id="${form.formId}" ${autoSyncChecked}>
+            <span class="slider"></span>
+          </label>
+        `;
+
+        tableHtml += `
+          <tr class="${isCurrentWeek ? 'current-week' : ''}">
+            <td><strong>Week ${form.week}</strong></td>
+            <td>
+              <div class="action-buttons">
+                <button data-action="copy" data-url="${form.publishedUrl}" class="btn-small btn-alert">📤 Copy</button>
+                <button data-action="open" data-url="${form.publishedUrl}" class="btn-small btn-primary">📂 Open</button>
+                <button data-action="edit" data-url="${form.editUrl}" class="btn-small btn-secondary">📝 Edit</button>
+                <button data-action="toggle-status" data-form-id="${form.formId}" class="btn-small ${toggleButtonClass}">${toggleButtonText}</button>
+              </div>
+            </td>
+            <td class="center-align">${autoSyncSlider}<span></td>
+            <td style="text-align: center" ><span id="status-dot-${form.formId}" title="${form.isActive ? 'Accepting Responses' : 'Not Accepting'}">${form.isActive ? '📖' : '📕'}</span></td>
+            <td>
+              ${form.pickemsInclude ? '<span class="icon" title="Pick\'em Enabled" style="text-align: center">' + (form.pickemsAts ? '🔢' : '☑️') + '</span>' : '<span class="icon" title="Pick\'em Disabled">❌</span>'}
+            </td>
+            <td>
+              ${form.survivorInclude ? '<span class="icon" title="Survivor Enabled" style="text-align: center">' + (form.survivorAts ? '🔢' : '☑️') + '</span>' : '<span class="icon" title="Survivor Disabled">❌</span>'}
+            </td>
+            <td>
+              ${form.eliminatorInclude ? '<span class="icon" title="Eliminator Enabled" style="text-align: center">' + (form.eliminatorAts ? '🔢' : '☑️') + '</span>' : '<span class="icon" title="Eliminator Disabled">❌</span>'}
+            </td>
+            <td>            
+              ${!form.membershipLocked ? '<span class="icon" title="Membership Open" style="text-align: center">☑️</span>' : '<span class="icon" title="Membership Closed">❌</span>'}
+            </td>
+            <td>            
+              ${form.imported ? '<span class="icon" title="Responses Imported" style="text-align: center">☑️</span>' : '<span class="icon" title="Responses NOT Imported">❌</span>'}
+            </td>
+            <td class="numeric-cell">${newMemberCount > 0 ? `+${newMemberCount}` : '0'}</td>
+            <td class="numeric-cell">${form.gameCount || 'N/A'}</td>
+            <td>
+              <button data-action="toggle-respondents" data-week="${form.week}" class="respondent-toggle tooltip ${respondentNumber > 0 ? '' : 'disabled'}">${respondentNumber} / ${data.totalMembers} (${(responseRate * 100).toFixed(0)}%)            
+              </button>
+            </td>
+            </tr>
+          <tr id="list-row-${form.week}" class="hidden">
+            <td colspan="6" class="respondent-list">
+              <strong>Responded:</strong> <ul>${form.respondents ? (form.respondents.length > 0 ? form.respondents.map(r => `<li>${r}</li>`).join('') : '<li>None</li>') : '<li>None</li>'}</ul>
+              <strong>Yet to Respond:</strong> <ul>${form.nonRespondents ? (form.nonRespondents.length > 0 ? form.nonRespondents.map(nr => `<li>${nr}</li>`).join('') : '<li>None</li>') : '<li>None</li>'}</ul>
+            </td>
+          </tr>
+        `;
+      });
+      tableBody.innerHTML = tableHtml;
+      
+      // Add event listeners to the respondent toggles
+      document.querySelectorAll('.respondent-toggle').forEach(toggle => {
+        if (!toggle.classList.contains('disabled')) {
+          toggle.addEventListener('click', (e) => {
+            const week = e.target.dataset.week;
+            document.getElementById(`list-row-${week}`).classList.toggle('hidden');
+          });
+        }
+      });
+      
+      hideLoader();
+      document.getElementById('dashboard-content').classList.remove('hidden');
+    }
+    
+    // Helper to open links in a new tab
+    function openUrl(url) {
+      window.open(url, '_blank');
+    }
+  </script>
+</body>
+</html>
