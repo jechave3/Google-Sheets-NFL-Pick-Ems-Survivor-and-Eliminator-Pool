@@ -7340,11 +7340,9 @@ function overallPrimaryFormulas(sheet,totalMembers,maxCols,action,avgRow) {
 
 // TOT / RNK / PCT / MNF Combination formula for each column (week)
 function overallMainFormulas(weeks,sheet,totalMembers,str,avgRow) {
-  let b;
   weeks = weeks || Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
   for (let a = 0; a < weeks.length; a++ ) {
-    b = 1;
-    for (b ; b <= totalMembers; b++) {
+    for (let b = 1; b <= totalMembers; b++) {
       if (str == 'TOT') {
         sheet.getRange(b+1,a+3).setFormula('=iferror(if(or(iserror(vlookup($A'+(b+1)+',NAMES_'+weeks[a]+',1,false)),counta(filter('+LEAGUE+'_PICKS_'+weeks[a]+',NAMES_'+weeks[a]+'=$A'+(b+1)+'))=0),,arrayformula(countifs(filter('+LEAGUE+'_PICKS_'+weeks[a]+',NAMES_'+weeks[a]+'=$A'+(b+1)+')='+LEAGUE+'_PICKEM_OUTCOMES_'+weeks[a]+',true,filter('+LEAGUE+'_PICKS_'+weeks[a]+',NAMES_'+weeks[a]+'=$A'+(b+1)+'),\"<>\"))),)');
       } else {
@@ -7383,7 +7381,8 @@ function overallMainFormulas(weeks,sheet,totalMembers,str,avgRow) {
     } else {
       for (let a = 0; a < weeks.length; a++){
         let rows = sheet.getMaxRows();
-        sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))');
+        sheet.getRange(rows,a+3).setFormulaR1C1('=iferror(if(counta(R2C[0]:R'+(totalMembers+1)+'C[0])>=3,average(R2C[0]:R'+(totalMembers+1)+'C[0]),))')
+          .setNumberFormat("##%");
       }
     }
   }
