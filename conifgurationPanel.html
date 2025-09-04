@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; transition: opacity 0.3s ease; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #D50A0A; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none; opacity: 0; pointer-events: none; }
+    .card-header { background-color: #B0B0B0; color: white; font-weight: 700; padding: 12px; text-align: left; transition: background-color 0.3s ease; }
+    .card-header.active { background-color: #5E5E5E; }
+    .card-header-top { background-color: #013369; color: white; font-weight: 800; padding: 22px 20px; text-align: left; }
+    .card-header-text-only { background-color: #5E5E5E; color: white; font-weight: 700; padding: 18px 16px; text-align: left; }
+    .card-header p { margin: 4px 0 0 0; font-size: 14px; opacity: 0.9; }
+    .card-section { padding: 12px; border-bottom: 1px solid #E8EAED; }
+    .section-header { font-size: 14px; font-weight: 600; color: #013369; margin-bottom: 12px; }
+    .switch-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; min-height: 30px; }
+    .switch-label { font-size: 14px; color: #202124; flex: 1; }
+    .section-header-big { font-size: 18px; color: #FFFFFF; font-weight: 700; flex: 1; }
+    .section-header-big-light { font-size: 18px; color: #DDDDDD; font-weight: 400; flex: 1; }
+    .section-header-subtitle { font-size: 12px; color: #DDDDDD; font-weight: 500; flex: 1; }
+    .switch { position: relative; width: 36px; height: 20px; margin-left: 16px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .radio-row { font-size: 14px; font-weight: 500; display: flex; justify-content: space-between; align-items: flex-start; padding: 2px 0; min-height: 40px; flex-direction: column; }
+    .radio-label { font-size: 14px; color: #202124; margin-bottom: 12px; font-weight: 500; }
+    .radio-label-dark { font-size: 14px; color: #FFFFFF; font-weight: 700; flex: 1; }
+    .radio-options { display: flex; flex-direction: column; gap: 8px; margin-left: 15px; width: 90%; }
+    .radio-column { display: flex; align-items: center; gap: 8px; }
+    .radio-column input[type="radio"] { width: 20px; height: 20px; accent-color: #D50A0A; cursor: pointer; appearance: none; -webkit-appearance: none; border: 2px solid #CCCCCC; border-radius: 50%; background-color: white; position: relative; transition: 0.3s; }
+    .radio-column input[type="radio"]:checked { border-color: #D50A0A; background-color: #D50A0A; }
+    .radio-column input[type="radio"]:checked::before { content: ""; position: absolute; width: 8px; height: 8px; border-radius: 50%; background-color: white; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    .radio-number { font-size: 16px; font-weight: 700; color: #202124; }
+    .radio-number-note { font-size: 12px; font-weight: 500; color: #202124; margin-left: 4px; }
+    .radio-option input[type="radio"] { width: 16px; height: 16px; accent-color: #D50A0A; cursor: pointer; }
+    .radio-option label { font-size: 14px; color: #202124; cursor: pointer; user-select: none; }
+    .radio { position: relative; width: 36px; height: 20px; margin-left: 16px; }
+    .radio input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: 0.3s; border-radius: 10px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: 0.3s; border-radius: 50%; }
+    input:checked+.slider { background-color: #D50A0A; }
+    input:checked+.slider:before { transform: translateX(16px); }
+    .description { font-size: 12px; color: #5f6368; margin-top: 2px; padding-bottom: 6px; font-style: italic; }
+    .text-input { width: 100%; padding: 8px 15px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; margin-top: 6px; }
+    .text-input:focus { outline: none; border-color: #D50A0A; box-shadow: 0 0 0 1px #D50A0A; }
+    .text-input-week { width: 20%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 
+    12px; margin-top: 6px; }
+    .text-input-week:focus { outline: none; border-color: #D50A0A; box-shadow: 0 0 0 1px #D50A0A; }
+    .space { height: 6px; }
+    .button-section { padding: 16px; background-color: #f8f9fa; }
+    .button-row { display: flex; gap: 8px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    .tooltip { position: relative; display: inline-block; cursor: help; }
+    .tooltip .tooltiptext { visibility: hidden; font-size: 10pt; width: 200px; background-color: #ffffff; border-radius: 6px; border: 2px solid #D50A0A; color: #000000; text-align: center; padding: 5px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.5s; }
+    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+    .week-indicator { font-size: 12px; color: #DDDDDD; font-weight: 500; margin-top: 6px; }
+    .year-indicator { font-size: 12px; color: #DDDDDD; font-weight: 700; margin-top: 6px; }
+    .tz-display { font-size: 14px; color: #202124; }
+    .tz-display strong { color: #013369; }
+    .tz-current-time { font-size: 12px; color: #5f6368; font-style: italic; margin-top: 4px; }
+    .tz-kickoff-message { font-size: 12px; color: #D50A0A; font-weight: 600; margin-top: 6px; }
+    .indented-section { margin-left: 20px; padding-left: 15px; border-left: 2px solid #E8EAED; margin-top: 10px; }
+    .switch-small { transform-origin: right center; transform: scale(0.8); }
+    .radio-slider-group .radio-column { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; }
+    .radio-slider-group .radio-label { font-size: 14px; color: #202124; cursor: pointer; }
+    .radio-slider-group input[type="radio"] { display: none; }
+    .dropdown-select { width: 40%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; margin-top: 6px; background-color: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 40px; }
+    .dropdown-select:focus { outline: none; border-color: #D50A0A; box-shadow: 0 0 0 1px #D50A0A; }
+    .dropdown-select:hover { border-color: #D50A0A; }
+    .dropdown-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; min-height: 30px; }
+    .dropdown-label { font-size: 14px; color: #202124; flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="loading-overlay">
+    <div class="spinner">
+    </div>
+  </div>
+  <!-- HEADER -->
+  <form id="configForm">
+    <div class="card-header-top"><div class="section-header-big" id="headerText">Picks Configuration Pane</div><span class="year-indicator" id='year'></span><span class="week-indicator" id='week'>Loading...</span></div>
+    <div class="card-section">Name your group<div class="tooltip"><input type="text" id="groupName" class="text-input" placeholder="Enter custom group name" name="groupName"><span class="tooltiptext">Will revert to default if left blank</span></div></div>
+    <div class="card-header-text-only"><div class="section-header-big">🕐 Time Zone</div></div>
+    <div class="card-section">
+      <div class="tooltip">
+        <span class="tz-display">Detected Time Zone: <strong id="tz-name">Loading...</strong></span>
+        <div class="tz-current-time" id="tz-current-time"></div>
+        <div class="tz-kickoff-message" id="tz-kickoff-time"></div>
+        <span class="tooltiptext">This setting must match your local time for game schedules to be correct. It is controlled by the Google Sheet, not the add-on.<br><strong>To Change:</strong> In the Google Sheet menu, go to File > Settings > Time zone. Then, save and reload this panel.</span>
+      </div>
+    </div>
+    <!-- PICK 'EMS SECTION -->
+    <div class="card-header" id="pickemsHeader">
+      <div class="switch-row">
+        <div class="section-header-big"><span>🏈 Pick 'Ems</span><span class="section-header-big-light" id="pickemsTitleAtsNote"></span></div>
+        <label class="switch"><input type="checkbox" id="pickemsInclude" name="pickemsInclude" onchange="updateUI()"><span class="slider"></span></label>
+      </div>
+      <div class="section-header-subtitle">Select the <strong id="pickemsDescription"></strong>winning team from <strong id="pickemsMatchups">all </strong> matchups</div>
+    </div>
+    <div id="pickemsOptions" class="card-section hidden">
+      <div class="switch-row"><div class="tooltip switch-label">Pick Against the Spread (ATS)<span class="tooltiptext">Includes betting lines for picking against the spread.</span></div><label class="switch"><input type="checkbox" id="pickemsAts" name="pickemsAts" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Disable MNF Tracking<span class="tooltiptext">Removes the running tally of correct MNF picks as an additional season-long category for competition.</span></div><label class="switch"><input type="checkbox" id="mnfExclude" name="mnfExclude"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Disable Comments<span class="tooltiptext">Removes the optional comment box from the Google Form that is then displayed on the weekly sheet once picks have been imported.</span></div><label class="switch"><input type="checkbox" id="commentsExclude" name="commentsExclude"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Enable Bonus Multipliers<span class="tooltiptext">Configure bonus multipliers during form creation and also then show the per-game weighting multiplier of 1, 2, or 3 on the sheet.</span></div><label class="switch"><input type="checkbox" id="bonusInclude" name="bonusInclude" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div id="bonusIncludeOptions" class="hidden"><div class="switch-row" style="margin-left: 20px;"><div class="tooltip switch-label">2X Value for MNF<span class="tooltiptext">Monday Night Football games will automatically be counted as double.</span></div><label class="switch"><input type="checkbox" id="mnfDouble" name="mnfDouble"><span class="slider"></span></label></div></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Use Final Game for Tiebreaker<span class="tooltiptext">Determined via the closest guess to the final game's score (over/under).</span></div><label class="switch"><input type="checkbox" id="tiebreakerInclude" name="tiebreakerInclude" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div id="tiebreakerIncludeOptions" class="hidden"><div class="switch-row" style="margin-left: 20px;"><div class="tooltip switch-label">Display over/under<span class="tooltiptext">The over/under value for the tiebreaker game only will be added to the form if available.</span></div><label class="switch"><input type="checkbox" id="overUnderInclude" name="overUnderInclude"><span class="slider"></span></label></div></div>
+      <div class="space"></div>
+    </div>
+    <!-- SURVIVOR SECTION -->
+    <div class="card-header" id="survivorHeader">
+      <div class="switch-row">
+        <div class="section-header-big"><span>👑 Survivor</span><span class="section-header-big-light" id="survivorTitleAtsNote"></span></div>
+        <label class="switch"><input type="checkbox" id="survivorInclude" name="survivorInclude" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="section-header-subtitle">Select a single <strong id="survivorDescription"></strong><strong>WINNING</strong> team each week to "survive" to the next round</div>
+    </div>
+    <div id="survivorOptions" class="card-section hidden">
+      <div class="dropdown-row">
+      <div class="tooltip dropdown-label">
+        Survivor Start Week
+        <span class="tooltiptext">Select which week the survivor pool will begin.</span>
+      </div>
+      <select class="dropdown-select" id="survivorStartWeek" name="survivorStartWeek">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+        <option value="7">7</option>
+        <option value="8">8</option>
+        <option value="9">9</option>
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
+        <option value="13">13</option>
+        <option value="14">14</option>
+        <option value="15">15</option>
+        <option value="16">16</option>
+        <option value="17">17</option>
+        <option value="18">18</option>
+      </select>
+    </div>
+    <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Pick Against the Spread (ATS)<span class="tooltiptext">Includes betting lines for picking against the spread.</span></div><label class="switch"><input type="checkbox" id="survivorAts" name="survivorAts" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Allow Survivor Revives<span class="tooltiptext">Allow for members to rejoin the survivor pool.</span></div><label class="switch"><input type="checkbox" id="survivorRevives" name="survivorRevives"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="radio-row">
+        <div class="tooltip radio-label">Survivor "Lives"<span class="tooltiptext">Number of incorrect picks allowed before full elimination.</span></div>
+        <div class="radio-options">
+          <div class="radio-column">
+            <input type="radio" checked="checked" id="survivorLives0" name="survivorLives" value="1">
+            <div class="radio-number">1</div>
+            <div class="radio-number-note">Out after first miss</div>
+          </div>
+          <div class="radio-column">
+            <input type="radio" id="survivorLives1" name="survivorLives" value="2">
+            <div class="radio-number">2</div>
+            <div class="radio-number-note">A second chance</div>
+          </div>
+          <div class="radio-column">
+            <input type="radio" id="survivorLives2" name="survivorLives" value="3">
+            <div class="radio-number">3</div>
+            <div class="radio-number-note">A third chance</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ELIMINATOR SECTION -->
+    <div class="card-header" id="eliminatorHeader">
+      <div class="switch-row">
+        <div class="section-header-big"><span>💀 Eliminator</span><span class="section-header-big-light" id="eliminatorTitleAtsNote"></span></div>
+        <label class="switch"><input type="checkbox" id="eliminatorInclude" name="eliminatorInclude" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="section-header-subtitle">Select a single <strong id="eliminatorDescription"></strong><strong>LOSING</strong> team each week to make it to the next round</div>
+    </div>
+    <div id="eliminatorOptions" class="card-section hidden">
+      <div class="dropdown-row">
+      <div class="tooltip dropdown-label">
+        Eliminator Start Week
+        <span class="tooltiptext">Select which week the eliminator pool will begin.</span>
+        </div>
+        <select class="dropdown-select" id="eliminatorStartWeek" name="eliminatorStartWeek">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+          <option value="13">13</option>
+          <option value="14">14</option>
+          <option value="15">15</option>
+          <option value="16">16</option>
+          <option value="17">17</option>
+          <option value="18">18</option>
+        </select>
+      </div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Pick Against the Spread (ATS)<span class="tooltiptext">Includes betting lines for picking against the spread.</span></div><label class="switch"><input type="checkbox" id="eliminatorAts" name="eliminatorAts" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="switch-row"><div class="tooltip switch-label">Allow Eliminator Revives<span class="tooltiptext">Allow for members to rejoin the eliminator pool.</span></div><label class="switch"><input type="checkbox" id="eliminatorRevives" name="eliminatorRevives"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <div class="radio-row">
+        <div class="tooltip radio-label">Eliminator "Lives"<span class="tooltiptext">Number of incorrect picks allowed before full elimination.</span></div>
+        <div class="radio-options">
+          <div class="radio-column">
+            <input type="radio" checked="checked" id="eliminatorLives0" name="eliminatorLives" value="1">
+            <div class="radio-number">1</div>
+            <div class="radio-number-note">Out after first miss</div>
+          </div>
+          <div class="radio-column">
+            <input type="radio" id="eliminatorLives1" name="eliminatorLives" value="2">
+            <div class="radio-number">2</div>
+            <div class="radio-number-note">A second chance</div>
+          </div>
+          <div class="radio-column">
+            <input type="radio" id="eliminatorLives2" name="eliminatorLives" value="3">
+            <div class="radio-number">3</div>
+            <div class="radio-number-note">A third chance</div>
+          </div>
+        </div>
+      </div>
+    </div>    
+    <!-- MATCHUP CUSTOMIZATION -->
+    <div class="card-header" id="matchupCustomizeHeader">
+      <div class="switch-row">
+        <div class="section-header-big"><span>📅 Customize Games</span></div>
+        <label class="switch"><input type="checkbox" id="customizeMatchups" name="customizeMatchups" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="section-header-subtitle tooltip">Customize which matchups are included each week, either by weekday or individually.<span class="tooltiptext">By default, all games are included.</span></div></div>
+      <div id="matchupCustomizationSection" class="card-section hidden">
+        <div class="radio-row">
+          <div class="radio-options">
+          <div class="radio-column">
+            <input type="radio" checked="checked" id="modeMatchup" name="customizeMode" value="matchup" onchange="updateUI()">
+            <div class="radio-number">Select by Individual Game</div>
+          </div>
+          <div class="radio-column">
+            <input type="radio" id="modeWeekday" name="customizeMode" value="weekday" onchange="updateUI()">
+            <div class="radio-number">Select by Days of the Week</div>
+          </div>
+        </div>
+        <div id="weekdaySelection" class="indented-section hidden">
+          <div class="switch-row"><div class="switch-label">Wednesday</div><label class="switch switch-small"><input type="checkbox" name="includeWed" checked><span class="slider"></span></label></div>
+          <div class="switch-row"><div class="switch-label">Thursday</div><label class="switch switch-small"><input type="checkbox" name="includeThu" checked><span class="slider"></span></label></div>
+          <div class="switch-row"><div class="switch-label">Friday</div><label class="switch switch-small"><input type="checkbox" name="includeFri" checked><span class="slider"></span></label></div>
+          <div class="switch-row"><div class="switch-label">Saturday</div><label class="switch switch-small"><input type="checkbox" name="includeSat" checked><span class="slider"></span></label></div>
+          <div class="switch-row"><div class="switch-label">Sunday</div><label class="switch switch-small"><input type="checkbox" name="includeSun" checked><span class="slider"></span></label></div>
+          <div class="switch-row"><div class="switch-label">Monday</div><label class="switch switch-small"><input type="checkbox" name="includeMon" checked><span class="slider"></span></label></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-header-text-only"><div class="section-header-big">📋 Other Options</div></div>
+    <div class="card-section">
+      <div class="switch-row"><div class="tooltip switch-label"><span id="lockStatus">🔓 </span>Disable joining via the form<span class="tooltiptext">By default users can joing as a "New User" via the form. This feature removes the "New User" option from created forms.</span></div><label class="switch"><input type="checkbox" id="membershipLocked" name="membershipLocked" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="space"></div>
+      <!-- <div class="switch-row"><div class="tooltip switch-label">Hide playoff weeks<span class="tooltiptext">Hides playoff weeks by default. Can be unhidden later.</span></div><label class="switch"><input type="checkbox" id="playoffsExclude" name="playoffsExclude"><span class="slider"></span></label></div>
+      <div class="space"></div> -->
+      <div class="switch-row"><div class="tooltip switch-label"><span id="hideEmojiIcon">🙂 </span>Hide form emojis<span class="tooltiptext">Emojis by default are added for color and icon recognition in the forms.</span></div><label class="switch"><input type="checkbox" id="hideEmojis" name="hideEmojis" onchange="updateUI()"><span class="slider"></span></label></div>
+      <div class="space"></div>
+    </div>
+
+    
+  </div>
+  <div class="button-section">
+    <div class="button-row">
+      <button type="button" class="btn btn-secondary" onclick="handleCancel()">Cancel</button>
+      <button type="button" class="btn btn-primary" onclick="handleSubmit()">Submit</button>
+    </div>
+  </div>
+  </form>
+
+  <script>
+    let clientSideLeague = 'NEW NFL';
+
+    function applyInitialData(data) {
+      try { 
+        clientSideLeague = data.league;
+        const savedProps = data.properties;
+        if (!savedProps || Object.keys(savedProps).length === 0) {
+          console.log("No saved properties found. Using default UI.");
+          document.getElementById('pickemsInclude').checked = true;
+        } else {
+          console.log("Applying saved properties:", savedProps);
+          
+          document.querySelectorAll('input[type="checkbox"]').forEach(box => {
+            if (savedProps.hasOwnProperty(box.name)) {
+              box.checked = savedProps[box.name];
+            }
+          });
+          if (savedProps.hasOwnProperty('groupName')) {
+            document.querySelector('input[name="groupName"]').value = savedProps.groupName;
+          }
+          if (savedProps.hasOwnProperty('survivorStartWeek')) {
+            const radio = document.querySelector(`select[name="survivorStartWeek"]`).value = savedProps.survivorStartWeek || savedProps.week;
+          }
+          if (savedProps.hasOwnProperty('survivorLives')) {
+            const radio = document.querySelector(`input[name="survivorLives"][value="${savedProps.survivorLives}"]`);
+            if (radio) radio.checked = true;
+          }
+          if (savedProps.hasOwnProperty('eliminatorStartWeek')) {
+            document.querySelector(`select[name="eliminatorStartWeek"]`).value = savedProps.eliminatorStartWeek || savedProps.week;
+          }  
+          if (savedProps.hasOwnProperty('eliminatorLives')) {
+            const radio = document.querySelector(`input[name="eliminatorLives"][value="${savedProps.eliminatorLives}"]`);
+            if (radio) radio.checked = true;
+          }
+          // Sets all customizations, even if it's now been disabled
+          if (savedProps.customizeMatchups) document.getElementById('customizeMatchups').checked = true;
+          let mode = null;
+          if (savedProps.matchupCustomization) mode = savedProps.matchupCustomization.mode;
+          const modeRadio = document.querySelector(`input[name="customizeMode"][value="${mode}"]`);
+          if (savedProps.hasOwnProperty("matchupCustomization")) {
+            if (savedProps.matchupCustomization.hasOwnProperty("mode") && modeRadio) modeRadio.checked = true;
+            if (savedProps.matchupCustomization.hasOwnProperty("days")) {
+              const days = savedProps.matchupCustomization.days;
+              for (const dayKey in days) {
+                const dayCheckbox = document.querySelector(`input[name="${dayKey}"]`);
+                if (dayCheckbox) dayCheckbox.checked = days[dayKey];
+              }
+            }
+          }
+        }
+        if (data.timeZoneInfo) {
+          document.getElementById('tz-name').textContent = data.timeZoneInfo.zone;
+          document.getElementById('tz-current-time').innerHTML = `Current detected time: ${data.timeZoneInfo.currentTime}`;
+          if (data.timeZoneInfo.kickoffMessage) {
+            document.getElementById('tz-kickoff-time').textContent = data.timeZoneInfo.kickoffMessage;
+          }
+        }
+        if (savedProps.week) {
+          let weekString = `WEEK ${savedProps.week}`;
+          if (data.weekNames.hasOwnProperty(savedProps.week)) {
+            weekString += ` • ${data.weekNames[savedProps.week].name}`
+          } else {
+            weekString += ' • Regular Season';
+          }
+          document.getElementById('week').textContent = weekString;
+        } else {
+          document.getElementById('week').textContent = `UNKNOWN WEEK • Issue in Detection`;
+        }
+        if (savedProps.year) {
+          document.getElementById('year').textContent = `${savedProps.year}  • `;
+        }
+      } catch (error) { 
+        console.error("Error applying initial data:", error); 
+      } finally {
+        updateUI();
+        toggleElement('loading-overlay',false);
+      }
+    }
+
+    function onDataFetchFailure(error) {
+      console.error('Error fetching configuration data:', error);
+      alert('Could not load configuration. Please try again.');
+      toggleElement('loading-overlay',false);
+    }
+
+    function toggleElement(id, shouldShow) {
+      const el = document.getElementById(id);
+      if (el) {
+        if (shouldShow) {
+          el.classList.remove('hidden');
+        } else {
+        el.classList.add('hidden');
+        }
+      }
+    };
+
+    function updateUI() {
+      const isChecked = (id) => {
+        const el = document.getElementById(id);
+        return el ? el.checked : false;
+      };
+
+      const pickemsOn = isChecked('pickemsInclude');
+      const survivorOn = isChecked('survivorInclude');
+      const eliminatorOn = isChecked('eliminatorInclude');
+      const bonusIncludeOn = isChecked('bonusInclude');
+      const tiebreakerIncludeOn = pickemsOn && isChecked('tiebreakerInclude');
+      const customizeMatchupsOn = isChecked('customizeMatchups');
+      const customizeByWeekdayOn = customizeMatchupsOn && !isChecked('modeWeekday');
+      const pickemsAtsOn= isChecked('pickemsAts');
+      const survivorAtsOn = isChecked('survivorAts');
+      const eliminatorAtsOn = isChecked('eliminatorAts');
+      const membershipLockOn = isChecked('membershipLocked');
+      const hideEmojisOn = isChecked('hideEmojis');
+
+      toggleElement('pickemsOptions', pickemsOn);
+      toggleElement('survivorOptions', survivorOn);
+      toggleElement('eliminatorOptions', eliminatorOn);
+      toggleElement('bonusIncludeOptions', bonusIncludeOn);
+      toggleElement('tiebreakerIncludeOptions', tiebreakerIncludeOn);
+      toggleElement('matchupCustomizationSection', customizeMatchupsOn);
+      toggleElement('weekdaySelection', customizeByWeekdayOn == '');
+
+      const pickemsHeader = document.getElementById('pickemsHeader');
+      if (pickemsHeader) pickemsHeader.classList.toggle('active', pickemsOn);
+      
+      const survivorHeader = document.getElementById('survivorHeader');
+      if (survivorHeader) survivorHeader.classList.toggle('active', survivorOn);
+
+      const eliminatorHeader = document.getElementById('eliminatorHeader');
+      if (eliminatorHeader) eliminatorHeader.classList.toggle('active', eliminatorOn);
+      
+      const matchupCustomizeHeader = document.getElementById('matchupCustomizeHeader');
+      if (matchupCustomizeHeader) matchupCustomizeHeader.classList.toggle('active', customizeMatchupsOn);
+
+
+      // Pick 'Ems dynamic naming changes
+      const pickemsTitleAtsNote = document.getElementById('pickemsTitleAtsNote');
+      const pickemsDesc = document.getElementById('pickemsDescription');
+      const pickemsMatchups = document.getElementById('pickemsMatchups');
+
+      if (pickemsOn && pickemsTitleAtsNote) {
+        pickemsTitleAtsNote.innerHTML = pickemsAtsOn? " [ATS]" : "";
+      } else if (pickemsTitleAtsNote) {
+        pickemsTitleAtsNote.innerHTML = "";
+      }
+      if (pickemsOn && pickemsDesc) pickemsDesc.innerHTML = pickemsAtsOn? "against-the-spread " : "straight-up ";
+      if (pickemsMatchups) pickemsMatchups.innerHTML = customizeMatchupsOn ? "selected " : "all ";
+
+      // Survivor dynamic naming changes
+      const survivorTitleAtsNote = document.getElementById('survivorTitleAtsNote');
+      const survivorDesc = document.getElementById('survivorDescription');
+
+      if (survivorOn && survivorTitleAtsNote) {
+        survivorTitleAtsNote.innerHTML = survivorAtsOn? " [ATS]" : "";
+      } else if (survivorTitleAtsNote) {
+        survivorTitleAtsNote.innerHTML = "";
+      }  
+      if (survivorOn && survivorDesc) survivorDesc.innerHTML = survivorAtsOn? "against-the-spread " : "straight-up ";
+            
+      // Eliminator dynamic naming changes
+      const eliminatorTitleAtsNote = document.getElementById('eliminatorTitleAtsNote');
+      const eliminatorDesc = document.getElementById('eliminatorDescription');
+
+      if (eliminatorOn && eliminatorTitleAtsNote) {
+        eliminatorTitleAtsNote.innerHTML = eliminatorAtsOn? " [ATS]" : "";
+      } else if (eliminatorTitleAtsNote) {
+        eliminatorTitleAtsNote.innerHTML = "";
+      }  
+      if (eliminatorOn && eliminatorDesc) eliminatorDesc.innerHTML = eliminatorAtsOn? "against-the-spread " : "straight-up ";
+      
+      const membershipLockedTitle = document.getElementById('lockStatus');
+      if (membershipLockOn) {
+        membershipLockedTitle.innerHTML = '🔒 ';
+      } else {
+        membershipLockedTitle.innerHTML = '🔓 ';
+      }
+      const hideEmojiIcon = document.getElementById('hideEmojiIcon');
+      if (hideEmojisOn) {
+        hideEmojiIcon.innerHTML = '😞 ';
+      } else {
+        hideEmojiIcon.innerHTML = '🙂 ';
+      }
+
+      const groupNameInput = document.getElementById('groupName');
+      if (groupNameInput) {
+        let groupName = groupNameInput.value;
+        let defaultPicksName = `${clientSideLeague} Pick 'Ems`;
+        let defaultSurvivorName = `${clientSideLeague} Survivor Pool`;
+        let defaultEliminatorName = `${clientSideLeague} Eliminator Pool`;
+        let defaultSurvivorAndEliminatorName = `${clientSideLeague} Survivor/Eliminator Pool`;
+        if (groupName === '' || groupName === defaultPicksName || groupName === defaultSurvivorName || groupName === defaultEliminatorName || groupName === defaultSurvivorAndEliminatorName) {
+            groupNameInput.value = pickemsOn ? defaultPicksName : (survivorOn && eliminatorOn ? `${clientSideLeague} Survivor/Eliminator Pool` : (survivorOn && !eliminatorOn ? defaultSurvivorName : (eliminatorOn && !survivorOn ? defaultEliminatorName : defaultPicksName)));
+        }
+      }
+    }
+    
+    function handleSubmit() {
+      const form = document.getElementById('configForm');
+      const formObject = {};
+
+      form.querySelectorAll('.dropdown-select').forEach(el => {
+        formObject[el.name] = el.value;
+      });
+      form.querySelectorAll('input[type="text"], input[type="checkbox"]').forEach(el => {
+        formObject[el.name] = (el.type === 'checkbox') ? el.checked : el.value;
+      });
+      form.querySelectorAll('input[type="radio"]:checked').forEach(el => {
+        formObject[el.name] = el.value;
+      });
+      
+      const mode = formObject.customizeMode || 'weekday';
+      const customization = { mode: mode };
+      customization.days = {
+        includeWed: formObject.includeWed, includeThu: formObject.includeThu,
+        includeFri: formObject.includeFri, includeSat: formObject.includeSat,
+        includeSun: formObject.includeSun, includeMon: formObject.includeMon,
+      };
+      if (mode === 'weekday') {
+        if (!Object.values(customization.days).some(day => day)) {
+          alert('If customizing by days, you must select at least one day.');
+          return;
+        }
+      }
+      formObject.matchupCustomization = customization;
+
+      ['customizeMode', 'includeWed', 'includeThu', 'includeFri', 'includeSat', 'includeSun', 'includeMon'].forEach(key => delete formObject[key]);
+
+      if (!formObject.pickemsInclude && !formObject.survivorInclude && !formObject.eliminatorInclude) {
+        alert('Please select at least one pool type.');
+        return;
+      }
+      if (!formObject.groupName || formObject.groupName.trim() === '') {
+        alert('Please enter a name for your pool.');
+        return;
+      }
+      
+      console.log('Submitting Form Object:', formObject);
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(onSubmitFailure)
+        .processConfigurationSubmission(formObject);
+    }
+
+    function handleCancel() { google.script.host.close(); }
+    function onSubmitSuccess(result) {
+      console.log('Submission successful:', result);
+      alert('Pool configuration saved successfully!');
+      google.script.host.close();
+    }
+    function onSubmitFailure(error) { alert('Error creating configuration: ' + error.message); }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      google.script.run
+        .withSuccessHandler(applyInitialData)
+        .withFailureHandler(onDataFetchFailure)
+        .fetchConfigurationSidebarData();
+    });
+  </script>
+</body>
+</html>
