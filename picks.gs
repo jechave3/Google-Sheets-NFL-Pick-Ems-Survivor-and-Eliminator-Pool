@@ -1,6 +1,6 @@
-/** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR | 2025 Version
+/** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
- * v3.0
+ * v1.0
  * 09/04/2025
  * 
  * Created by Ben Powers
@@ -20,20 +20,20 @@
  * 
  * Configuration - set up the specs for your pool
  * 
+ * MEMBERS:
  * Member Manager - enter member names, rearrange, mark paid, revive (if using survivor/eliminator), and remove
- * 
  * Member Rename - rename a member in the sheet and update back-end name (note: this won't update the name on the form, which could cause problems, do this mid-week)
- * 
+ * FORMS:
  * Form Builder - make a new form with all sorts of customization
- * 
  * Form Manager - review existing forms, turn on and off trigger to record logging, review specs of the form, copy links, etc. Also preview response count
- * 
  * Form Import - import picks for any week that has a form (only do this when you're ready to import). Should prompt to only bring in passed weeks if desired
- * ------------
+ * -----------
+ * UTILITIES:
  * Fetch Scores - bring in NFL outcomes to the sheet IN PROGRESS!
  * Fetch NFL Data - update the schedule data, should bring in new spreads
  * Update Formulas - should refresh formulas on all sheets that have named ranges
- * ------------
+ * AUTOMATION:
+ * Spread Auto-Fetch Panel - lets you set a time for the schedule data (and spreads) to automatically be udpated
  * Enable Trigger - required for processing updates to Survivor/Eliminator evals
  * Disable Trigger - remove if causing issues or want to run without it for a while
  * ------------
@@ -57,40 +57,33 @@ function onOpen() {
   const isInitialized = docProps.getProperty('init') === 'true';
   const config = JSON.parse(docProps.getProperty('configuration'));
   if (isInitialized) {
-    let menu = SpreadsheetApp.getUi()
-      .createMenu('Picks')
+    const ui = SpreadsheetApp.getUi();
+    let menu = ui.createMenu('Picks')
       .addItem('Configuration', 'launchConfiguration');
     if (docProps.getProperty('configuration')) {
-      menu.addSeparator()
+      menu.addSubMenu(ui.createMenu('Members')
         .addItem('Member Manager', 'launchMemberPanel')
-        .addItem('Rename a Member','showRenamePanel');
-    }
-    if (docProps.getProperty('members')) {
-      menu.addSeparator()
+        .addItem('Rename a Member','showRenamePanel'));
+      menu.addSubMenu(ui.createMenu('Forms')
         .addItem('Form Builder', 'launchFormBuilder')
-        .addItem('Form Manager', 'launchFormManager')
-      if (docProps.getProperty('forms')) {
-        menu.addItem('Form Import', 'launchFormImport')
-          .addSeparator()
-          .addItem('Fetch Scores','recordWeeklyScores')
-          .addItem('Update ' + LEAGUE + ' Data', 'fetchSchedule')
-          .addItem('Update Formulas', 'allFormulasUpdate')
-          .addItem('Deploy Sheets','setupSheets')
-        if (config.pickemsInclude || config.survivorInclude) {
-          menu.addSeparator()
-            .addItem('Enable Triggers','createOnEditTrigger')
-            .addItem('Disable Triggers','deleteOnEditTrigger');
-        }
+        .addItem('Form Import', 'launchFormImport')
+        .addItem('Form Manager', 'launchFormManager'));
+    }
+    if (docProps.getProperty('forms')) {
+      menu.addSeparator()
+      menu.addSubMenu(ui.createMenu('Utilities')
+        .addItem('Fetch Scores','launchApiOutcomeImport')
+        .addItem('Update ' + LEAGUE + ' Data', 'fetchSchedule')
+        .addItem('Update Formulas', 'allFormulasUpdate')
+        .addItem('Deploy Sheets','setupSheets'));
+      if (config.pickemsInclude || config.survivorInclude) {
+        let string = config.survivorInclude && config.eliminatorInclude ? 'Survivor/Eliminator' : config.survivorInclude ? 'Survivor' : 'Eliminator';
+        menu.addSubMenu(ui.createMenu('Automation')
+          .addItem('Spread Auto-Fetch Panel','showAutoFetchPanel')
+          .addItem(`Enable ${string} Triggers`,'createOnEditTrigger')
+          .addItem(`Disable ${string} Triggers`,'deleteOnEditTrigger'));
       }
     }
-    if (true) {
-
-      menu.addSeparator()
-        .addItem('Check Configuration','checkDocumentConfiguration')
-        .addItem('Check Members','checkDocumentMembers')
-        .addItem('Delete Configuration','deleteConfiguration')
-    }
-      
     menu.addSeparator()
       .addItem('Help & Support','showSupportDialog')
       .addToUi();
@@ -111,7 +104,6 @@ function onOpen() {
       .addToUi();
   }
 }
-
 
 //------------------------------------------------------------------------
 // CHECKS IF TZ PROP SET AND PROMPTS IF NOT
@@ -141,9 +133,6 @@ function timezoneCheck(ui,docProps,lost) {
     return true;
   }
 }
-
-
-
 
 // ============================================================================================================================================
 // GLOBAL VARIABLES
@@ -703,9 +692,12 @@ function processConfigurationSubmission(formObject) {
       'customizeMode',
       'matchupCustomization',
 
-      'membershipLocked', // General options below
+      'membershipLocked',
+      'kickoffLock', // General options below
       // 'playoffsExclude',
-      'hideEmojis'
+      'hideEmojis',
+      'initialized',
+      'year'
       
     ];
     const configToSave = {};
@@ -745,15 +737,29 @@ function processConfigurationSubmission(formObject) {
       } 
     }
 
+    if (!configToSave.year) configToSave.year = fetchYear();
+    if (!configToSave.initialized) configToSave.initialized = false;
+    updateOutcomeSheetVisibility(configToSave);
     saveProperties('configuration', configToSave);
+
     if (removeNewUserEntry) {
       try {
-        removeNewUserQuestion(fetchWeek()); // <-- Maybe should be the highest index Form created?
+        const forms = JSON.parse(docProps.getProperty('forms'));
+        if (!forms) {
+          Logger.log('No forms exist for removing a new user from');
+        } else {
+          let maxWeek = Math.max(...Object.keys(data).map(key => parseInt(key)));
+          removeNewUserQuestion(maxWeek);
+          Logger.log('Removed new user from most recent form');
+        }
       }
       catch (err) {
         Logger.log(`Error removing "New User" question from form or it wasn't present: ${err.stack}`);
       }
     }
+    // Recreate menu...
+    onOpen();
+    
     return { success: true, data: configToSave };
 
   } catch (error) {
@@ -879,6 +885,7 @@ function fetchConfiguration(provideTemplate) {
  */
 function fetchConfigurationSidebarData() {
   try {
+    const docProps = PropertiesService.getDocumentProperties();
     const config = fetchConfiguration(true); // Includes Pick 'Ems ON and YEAR
     config.week = fetchWeek();
     const scriptTimeZone = Session.getScriptTimeZone();
@@ -984,7 +991,7 @@ function showSupportDialog() {
 function setupSheets() {
   const ss = fetchSpreadsheet();
   const docProps = PropertiesService.getDocumentProperties();
-  const config = JSON.parse(docProps.getProperty('configuration'));
+  let config = JSON.parse(docProps.getProperty('configuration'));
   
   if (!config) {
     launchConfiguration();
@@ -1067,6 +1074,8 @@ function setupSheets() {
       // Creates Weekly Sheets for the Current Week
       let weekly = weeklySheet(ss,week,config,memberData,false);
       Logger.log(`Deployed Weekly sheet for week ${week}`);
+
+
       ss.toast(`Deployed Weekly sheet for week ${week}`);
       weekly.activate();
     }
@@ -1080,6 +1089,8 @@ function setupSheets() {
     Logger.log(`Deleted 'Sheet 1'`);
     
     Logger.log(`You're all set, have fun!`);
+    config.initialized = true;
+    saveProperties('configuration', config);
   }
   catch (err) {
     Logger.log(`runFirstStack ${err.stack}`);
@@ -1214,7 +1225,7 @@ function launchMemberPanel() {
 function showRenamePanel() {
   const html = HtmlService.createHtmlOutputFromFile('renamePanel')
       .setWidth(400)
-      .setHeight(280);
+      .setHeight(280);  
   SpreadsheetApp.getUi().showModalDialog(html, 'Rename a Member');
 }
 
@@ -1332,50 +1343,65 @@ function createNewMember(name, isPaid, week) {
   return newMember;
 }
 
-
-/**
- * Processes the rename submission from the renamePanel.
- * @param {Object} data An object with 'oldName' and 'newName' properties.
+ 
+ /**
+ * Processes a rename submission. Finds the member by their
+ * old name to get their unique ID, then updates the name property for that ID.
+ *
+ * @param {Object} data An object from the client with 'oldName' and 'newName' properties.
  */
 function processRenameSubmission(data) {
   const oldName = data.oldName;
-  const newName = data.newName.trim(); // Sanitize here as well for safety
+  const newName = data.newName.trim(); // Sanitize the new name
 
-  // --- Server-side validation ---
-  if (!oldName || !newName || oldName === newName) {
+  // --- 1. Server-side validation ---
+  if (!oldName || !newName || oldName.toLowerCase() === newName.toLowerCase()) {
     throw new Error("Invalid input. Please select a member and provide a different new name.");
   }
   
-  const members = fetchProperties('members');
-  if (!members.order || !members.details) {
+  const memberData = JSON.parse(PropertiesService.getDocumentProperties().getProperty('members'));
+  if (!memberData.members) {
     throw new Error("Could not find any member data to update.");
   }
-  if (!members.order.includes(oldName)) {
+  
+  // a) Find the member's unique ID by their old name. This is a case-insensitive search.
+  let memberIdToUpdate = null;
+  let currentNames = []; // To check for duplicates
+  
+  for (const id in memberData.members) {
+    const member = memberData.members[id];
+    if (member.name.toLowerCase() === oldName.toLowerCase()) {
+      memberIdToUpdate = id;
+    }
+    currentNames.push(member.name.toLowerCase());
+  }
+
+  // b) More validation now that we have the data
+  if (!memberIdToUpdate) {
     throw new Error(`The member "${oldName}" could not be found. They may have already been renamed or deleted.`);
   }
-  if (members.order.map(n => n.toLowerCase()).includes(newName.toLowerCase())) {
-      throw new Error(`The name "${newName}" already exists in the member list.`);
+  if (currentNames.includes(newName.toLowerCase())) {
+    throw new Error(`The name "${newName}" already exists in the member list.`);
   }
 
-  // --- Perform the update ---
-  // 1. Update the 'order' array
-  members.order = members.order.map(name => (name === oldName ? newName : name));
+  // --- 2. Perform the Update (Now incredibly simple) ---
+  // We only need to change the name property of the specific member object.
+  // The 'memberOrder' array of IDs does NOT need to be changed at all.
+  memberData.members[memberIdToUpdate].name = newName;
   
-  // 2. Update the 'details' object
-  if (members.details[oldName]) {
-    members.details[newName] = members.details[oldName];
-    delete members.details[oldName];
-  }
+  // --- 3. Save the updated object back to properties ---
+  saveProperties('members', memberData);
 
-  // 3. Save the updated object back to properties
-  saveProperties('members',members);
-
-  // 4. Run the function to update the spreadsheet
+  // --- 4. Run the function to update the name on all user-facing sheets ---
+  // This function still works perfectly. It finds all instances of the old name
+  // and replaces them with the new one.
+  Logger.log('Renaming sheet member names...');
   renameMemberInSheet(oldName, newName);
+  Logger.log('Renaming database sheet member names...');
+  renameMemberInDatabaseSheet(oldName, newName);
 
   return { success: true, message: `Successfully renamed "${oldName}" to "${newName}".` };
 }
-
 
 /**
  * Finds all exact, case-sensitive matches of a member's name across all sheets
@@ -1410,6 +1436,37 @@ function removeMemberFromSheet(memberName) {
 }
 
 /**
+ * Fetches a simple, ordered list of all current member names.
+ * This is used to populate the dropdown in the "Rename a Member" panel.
+ * (This is the function you are likely referring to as fetchMembers).
+ *
+ * @returns {string[]} An array of current member names in the correct order.
+ */
+function fetchMembers() {
+  try {
+    // 1. Fetch the complete, authoritative members object.
+    const memberData = fetchProperties('members');
+
+    // 2. Safely get the order of member IDs. Default to an empty array if it doesn't exist.
+    const memberOrder = memberData.memberOrder || [];
+    const members = memberData.members || {};
+
+    // 3. Map the array of IDs to an array of names.
+    const names = memberOrder.map(id => {
+      // For each ID, look up the corresponding member's name.
+      // The optional chaining (?.) prevents errors if an ID has no matching member object.
+      return members[id]?.name;
+    }).filter(name => name); // 4. Filter out any null or undefined names.
+
+    return names;
+
+  } catch (error) {
+    Logger.log("Error in getMemberNames: " + error.toString());
+    return []; // Always return an array, even on failure.
+  }
+}
+
+/**
  * Finds all exact, case-sensitive matches of an old member name and replaces
  * it with the new name.
  *
@@ -1431,6 +1488,58 @@ function renameMemberInSheet(oldName, newName) {
   // replaceAllWith is a single, efficient operation.
   const cellsReplaced = textFinder.replaceAllWith(newName);
   Logger.log(`Replaced ${cellsReplaced} instances of "${oldName}".`);
+}
+
+/**
+ * Finds and replaces a member's name across all relevant columns
+ * in the private backend response spreadsheet.
+ *
+ * @param {string} oldName The original name to find.
+ * @param {string} newName The new name to replace it with.
+ */
+function renameMemberInDatabaseSheet(oldName, newName) {
+  try {
+    const dbSheet = getDatabaseSheet(); // Your existing helper to get the backend Spreadsheet
+    if (!dbSheet) {
+      console.log("Database sheet not found, skipping rename operation there.");
+      return;
+    }
+
+    // Find the columns that contain member names. We'll use our regex helper for this.
+    const allSheets = dbSheet.getSheets();
+    
+    allSheets.forEach(sheet => {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const { nameCol, newNameCol } = findNameColumns(headers); // Your existing regex helper
+
+      // Replace in the "Select Your Name" column
+      if (nameCol > -1) {
+        const range = sheet.getRange(2, nameCol + 1, sheet.getLastRow());
+        range.createTextFinder(oldName).matchEntireCell(true).replaceAllWith(newName);
+      }
+      
+      // Replace in the "Enter Your Name" column
+      if (newNameCol > -1) {
+        const range = sheet.getRange(2, newNameCol + 1, sheet.getLastRow());
+        range.createTextFinder(oldName).matchEntireCell(true).replaceAllWith(newName);
+      }
+      
+      // Replace in the unique "Survivor Winner Pick (Name)" columns
+      headers.forEach((header, index) => {
+        if (header.includes(`(${oldName})`)) {
+          const newHeader = header.replace(`(${oldName})`, `(${newName})`);
+          sheet.getRange(1, index + 1).setValue(newHeader);
+        }
+      });
+    });
+    
+    console.log(`Successfully performed rename operations for "${oldName}" in the backend database sheet.`);
+
+  } catch (error) {
+    // We log this as a warning because the primary rename (in properties) succeeded.
+    // This is a secondary cleanup task.
+    console.warn(`Could not complete rename in the database sheet for "${oldName}". Error: ${error.toString()}`);
+  }
 }
 
 /**
@@ -1625,7 +1734,7 @@ function fetchWeek(negative,current) {
         week = obj.week.number - (weeks + 1);
         break;
       case 2: 
-        name = 'Regular season';
+        name = 'Regular Season';
         week = obj.week.number + advance;
         break;
       case 3:
@@ -2058,6 +2167,8 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
     let homeIndex = headers.indexOf('homeTeam');
     let spreadIndex = headers.indexOf('spread');
     let overUnderIndex = headers.indexOf('overUnder');
+    let spreadAutoIndex = headers.indexOf('spreadAutoFetched');
+    let timeFetchedIndex = headers.indexOf('timeFetched');
     for (let a = 0; a < formsData.length; a++) {
       let dataWeek = formsData[a][0];
       let matchup = `${formsData[a][awayIndex]}@${[formsData[a][homeIndex]]}`;
@@ -2070,6 +2181,8 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
             if (existing[dataWeek][matchup].hasOwnProperty('spread')) {
               formsData[a][spreadIndex] = existing[dataWeek][matchup].spread;
             }
+            formsData[a][spreadAutoIndex] = existing[dataWeek][matchup].auto;
+            formsData[a][timeFetchedIndex] = existing[dataWeek][matchup].timeFetched;
           }
         }
       }
@@ -2086,6 +2199,8 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
               if (existing[dataWeek].hasOwnProperty(matchup)) {
                 formsData[a][overUnderIndex] = existing[dataWeek][matchup].overUnder;
                 formsData[a][spreadIndex] = existing[dataWeek][matchup].spread;
+                formsData[a][spreadAutoIndex] = auto ? 1 : 0;
+                formsData[a][timeFetchedIndex] = timeFetched;
               }
             }
           }
@@ -2368,6 +2483,9 @@ function recordWeeklyScores(){
   }
 }
 
+
+
+
 // NFL OUTCOMES - Records the winner and combined tiebreaker for each matchup on the NFL sheet
 function fetchWeeklyScores(){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2463,6 +2581,7 @@ function fetchWeeklyScores(){
     let completed = games.length - remaining;
 
     // Outputs total matches, how many completed, and how many remaining, and all matchups with outcomes decided;
+    Logger.log([week,games.length,completed,remaining,all]);
     return [week,games.length,completed,remaining,all];
   } else {
     Logger.log('ESPN API returned no games');
@@ -2512,118 +2631,162 @@ function fetchLogos(){
   return logos;
 }
 
-// ============================================================================================================================================
-// MENU FUNCTIONS
-// ============================================================================================================================================
-
-// CREATE MENU - this is the standard setup once the sheet has been configured and the data is all imported
-function createMenu(lock,trigger) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+/**
+ * The main function to launch the automated outcome import process.
+ * This should be called from a menu item like "Import Scores from Live Data".
+ */
+function launchApiOutcomeImport() {
   const ui = SpreadsheetApp.getUi();
-  if (lock == undefined || lock == null) {
-    lock = membersSheetProtected();
-  }
-  let pickems = false;
-  try{
-    pickems = ss.getRangeByName('PICKEMS_PRESENT').getValue();
-  }
-  catch (err) {
-    Logger.log('Issue gathering PICKEMS_PRESENT cell, you may not have completed setup correctly.');
-    pickems = true;
-  }
-  let tnfInclude = true;
-  try{
-    tnfInclude = ss.getRangeByName('TNF_PRESENT').getValue();
-  }
-  catch (err) {
-    Logger.log('Issue gathering TNF_PRESENT cell, you may not have completed setup correctly.');
-  }
-  let bonus = false;
-  try{
-    bonus = ss.getRangeByName('BONUS_PRESENT').getValue();
-  }
-  catch (err) {
-    Logger.log('Issue gathering BONUS_PRESENT cell, you may not have completed setup correctly.');
-  }
-  let mnfDouble = false;
-  try{
-    mnfDouble = ss.getRangeByName('MNF_DOUBLE').getValue();
-  }
-  catch (err) {
-    Logger.log('Issue gathering MNF_DOUBLE cell, you may not have completed setup correctly.');
-  }
-  let menu = ui.createMenu('Picks');
-    menu.addItem('Create a Form','formCreateAuto')
-      .addItem('Open Current Form','openForm');
-  if (pickems) {
-    menu.addItem('Week Sheet Creation','weeklySheetCreate');
-  }
-  menu.addSeparator();
-  if (tnfInclude) {
-    menu.addItem('Check Responses','formCheckAlert')
-      .addItem('Import Thursday Picks','dataTransferTNF')
-      .addItem('Import Picks','dataTransfer');
-  } else {
-    menu.addItem('Check Responses','formCheckAlert')
-      .addItem('Import Picks','dataTransfer');
-  }
-  menu.addSeparator()
-    .addItem('Check ' + LEAGUE + ' Scores','recordWeeklyScores')
-    .addItem('Update ' + LEAGUE + ' Schedule', 'fetchSchedule');
-  menu.addSeparator();
-  if (!bonus) {
-    menu.addItem('Enable Bonus','bonusUnhide');
-  } else if (mnfDouble) {
-    menu.addSubMenu(ui.createMenu('Bonus')
-      .addItem('Hide Game Bonus Value Row','bonusHide')
-      .addItem('MNF Double Value Disable','bonusDoubleMNFDisable')
-      .addItem('Random Game of the Week','bonusRandomGameSet'));
-  } else {
-    menu.addSubMenu(ui.createMenu('Bonus')
-      .addItem('Hide Game Bonus Value Row','bonusHide')
-      .addItem('MNF Double Value Enable','bonusDoubleMNFEnable')
-      .addItem('Random Game of the Week','bonusRandomGameSet'));
-  }
-  menu.addSeparator();
-  if (!lock) {
-  menu.addItem('Add Member(s)','memberAdd')
-    .addItem('Remove Member','memberRemove')
-    .addItem('Lock Members','createMenuLocked');
-  } else {
-    menu.addItem('Reopen Members','createMenuUnlocked');
-  }
-  menu.addSeparator();
-  menu.addItem('Refresh Formulas','allFormulasUpdate')
-    .addItem('Help & Support','showSupportDialog')
-    .addToUi();
-  if (trigger) {
-    deleteOnOpenTriggers();
-    let id = ss.getId();
-    ScriptApp.newTrigger('createMenu')
-      .forSpreadsheet(id)
-      .onOpen()
-      .create();
+  try {
+    // --- 1. Fetch all necessary data from properties & API ---
+    const docProps = PropertiesService.getDocumentProperties();
+    const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
+    
+    // Fetch the live API data
+    const apiData = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
+    const apiEvents = apiData.events || [];
+    
+    // Determine the current week from the API
+    const apiWeek = apiData.week.number;
+    const apiSeasonType = apiData.season.type; // 2 for regular, 3 for post
+    if (apiSeasonType == 3) apiWeek = apiWeek + REGULAR_SEASON;
+    
+    const gamePlan = formsData[apiWeek]?.gamePlan;
+    if (!gamePlan) {
+      throw new Error(`Could not find a game plan for the current API week (${apiWeek}). Please create the form for this week first.`);
+    }
+
+    // --- 2. Parse and categorize the API games ---
+    const outcomeAnalysis = parseApiEvents(apiEvents, gamePlan);
+
+    // --- 3. Build the confirmation message ---
+    let summary = (outcomeAnalysis.post.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
+    summary += `✅ Games Finished: ${outcomeAnalysis.post.length}\n`;
+    summary += `⏳ Games In Progress: ${outcomeAnalysis.in.length}\n`;
+    summary += `🚫 Games Not Started: ${outcomeAnalysis.pre.length}`;
+    if (outcomeAnalysis.post.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
+
+
+    const response = ui.alert(outcomeAnalysis.post.length == 0 ? 'No Completed Games Yet':'Confirm Outcome Import', summary, outcomeAnalysis.post.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
+
+    if (response === ui.Button.YES) {
+      // --- 4. If confirmed, execute the import ---
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      
+      // Update the sheets with the outcome data
+      updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
+      
+      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`);
+    } else {
+      SpreadsheetApp.getActiveSpreadsheet().toast('Import canceled.');
+    }
+
+  } catch (e) {
+    ui.alert('Error', `An error occurred: ${e.message}`, ui.ButtonSet.OK);
+    Logger.log("launchApiOutcomeImport Error: " + e.stack);
   }
 }
+
+/**
+ * Parses the events array from the API, categorizes games, and
+ * extracts relevant outcome data.
+ * @param {Array} apiEvents - The 'events' array from the API response.
+ * @param {Object} gamePlan - The authoritative gamePlan for the week.
+ * @returns {Object} An object containing categorized game outcomes.
+ */
+function parseApiEvents(apiEvents, gamePlan) {
+  const analysis = {
+    pre: [],
+    in: [],
+    post: []
+  };
+
+  const gamePlanMatchups = new Set(gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`));
+
+  apiEvents.forEach(event => {
+    // Only process events that are part of our official game plan
+    if (gamePlanMatchups.has(event.shortName)) {
+      const status = event.status.type.state;
+      
+      const homeTeam = event.competitions[0].competitors.find(c => c.homeAway === 'home');
+      const awayTeam = event.competitions[0].competitors.find(c => c.homeAway === 'away');
+
+      const gameData = {
+        shortName: event.shortName,
+        homeScore: parseInt(homeTeam.score, 10),
+        awayScore: parseInt(awayTeam.score, 10)
+      };
+
+      if (status === 'post') {
+        // Game is finished, determine winner and margin
+        gameData.winner = (gameData.homeScore > gameData.awayScore) ? homeTeam.team.abbreviation : awayTeam.team.abbreviation;
+        if (gameData.homeScore === gameData.awayScore) gameData.winner = 'TIE';
+        gameData.margin = Math.abs(gameData.homeScore - gameData.awayScore);
+        analysis.post.push(gameData);
+      } else if (status === 'in') {
+        analysis.in.push(gameData);
+      } else { // 'pre'
+        analysis.pre.push(gameData);
+      }
+    }
+  });
+
+  return analysis;
+}
+
+/**
+ * Takes the parsed API outcomes and writes them to the
+ * user-facing weekly sheet and the master NFL_OUTCOMES sheet.
+ */
+function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
+  if (completedGames.length === 0) {
+    SpreadsheetApp.getActiveSpreadsheet().toast('No completed games to import.');
+    return;
+  }
+  const docProps = PropertiesService.getDocumentProperties();
+  const config = JSON.parse(docProps.getProperty('configuration')) || {};
+  
+  const weeklySheet = ss.getSheetByName(`${weeklySheetPrefix}${week}`);
+  const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
+
+  // Create lookup maps for the columns in both sheets
+  const weeklyMatchupHeaders = ss.getRangeByName(`${LEAGUE}_${week}`)?.getValues()[0] || [];
+  const weeklyMatchupMap = new Map(weeklyMatchupHeaders.map((h, i) => [h.replace(/\n/g, ' @ '), i]));
+
+  completedGames.forEach(game => {
+    const colIndex = weeklyMatchupMap.get(game.shortName);
+    if (colIndex !== undefined) {
+      // --- Update the Weekly Sheet (e.g., WK1) ---
+      if (weeklySheet && config.pickemsInclude) {
+        const outcomeRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}`).getRow();
+        const marginRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}_MARGIN`).getRow();
+        weeklySheet.getRange(outcomeRow, colIndex + 1).setValue(game.winner);
+        weeklySheet.getRange(marginRow, colIndex + 1).setValue(game.margin);
+      }
+      
+      // --- Update the Master OUTCOMES Sheet ---
+      if (outcomesSheet) {
+        // Find the corresponding row in the OUTCOMES sheet
+        const masterMatchupRange = outcomesSheet.getRange(4, (week - 1) * 2 + 1, outcomesSheet.getLastRow() - 3);
+        const gamePlanGames = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
+        const rowIndex = gamePlanGames.indexOf(game.shortName);
+
+        if (rowIndex > -1) {
+          const winnerCol = (week - 1) * 2 + 1;
+          const marginCol = winnerCol + 1;
+          outcomesSheet.getRange(rowIndex + 4, winnerCol).setValue(game.winner);
+          outcomesSheet.getRange(rowIndex + 4, marginCol).setValue(game.margin);
+        }
+      }
+    }
+  });
+}
+
 
 
 // ============================================================================================================================================
 // FORM FUNCTIONS
 // ============================================================================================================================================
-
-function toggleConfig() {
-  const docProps = PropertiesService.getDocumentProperties();
-  if (docProps.getProperty('configuration') == null) {
-    const settings = docProps.getProperty('settings');
-    docProps.setProperty('configuration',settings);
-    docProps.deleteProperty('settings');
-  } else {
-    const configuration = docProps.getProperty('configuration');
-    docProps.setProperty('settings',configuration);
-    docProps.deleteProperty('configuration');
-  }
-}
-
 
 /**
  * [CORRECTED & BULLETPROOF] Gathers and aggregates all data for the dashboard.
@@ -2737,12 +2900,14 @@ function toggleFormStatus(formId) {
         .create();
       Logger.log(`Created new onFormSubmit trigger for form ID: ${formId}`);
     }
+    setFormSubmitTrigger(formId, newState);
     
-    return { success: true, newStatus: newState };
+    return { success: true, newStatus: newState, newSyncStatus: newState };
   } catch (error) {
     Logger.log(`Failed to toggle status for form ${formId}:`, error);
     throw new Error(`Could not update form status. ${error.message}`);
   }
+  
 }
 
 /**
@@ -2799,6 +2964,108 @@ function setFormSubmitTrigger(formId, shouldBeEnabled) {
     throw new Error(`Could not update trigger. ${error.message}`);
   }
 }
+
+/**
+ * This is the function that the one-time trigger will execute.
+ * It now looks up the form ID from properties using its own trigger ID.
+ *
+ * @param {Object} e The event object passed by the time-based trigger.
+ */
+function executeFormLock(e) {
+  // 1. Get the unique ID of the trigger that just ran.
+  const triggerId = e.triggerUid;
+  if (!triggerId) {
+    console.error("executeFormLock ran but could not identify its own trigger ID.");
+    return;
+  }
+  
+  // 2. Look up the trigger metadata in Document Properties.
+  const docProps = PropertiesService.getDocumentProperties();
+  const triggerMetaProperty = docProps.getProperty('triggerMeta_' + triggerId);
+  
+  if (!triggerMetaProperty) {
+    console.error(`Could not find metadata for trigger ID ${triggerId}. Aborting lock.`);
+    // Attempt to clean up the trigger anyway
+    deleteTriggerById(triggerId);
+    return;
+  }
+  
+  const metadata = JSON.parse(triggerMetaProperty);
+  const formId = metadata.formId;
+
+  try {
+    console.log(`Executing one-time lock for form ID: ${formId}`);
+    
+    // 3. Lock the form.
+    FormApp.openById(formId).setAcceptingResponses(false);
+    
+    // 4. Delete the trigger and its metadata.
+    deleteTriggerById(triggerId);
+    docProps.deleteProperty('triggerMeta_' + triggerId);
+
+    console.log(`Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
+  } catch (err) {
+    console.error(`Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
+    // Attempt to clean up anyway.
+    deleteTriggerById(triggerId);
+    docProps.deleteProperty('triggerMeta_' + triggerId);
+  }
+}
+
+/**
+ * Creates a one-time trigger to lock a form and stores
+ * metadata linking the trigger's ID to the form's ID.
+ *
+ * @param {string} formId The ID of the form to be locked.
+ * @param {Object} gamePlan The gamePlan object for that week's form.
+ */
+function setOneTimeFormLockTrigger(formId, gamePlan) {
+  if (!formId || !gamePlan || !gamePlan.games || gamePlan.games.length === 0) return;
+
+  let earliestKickoff = null;
+  gamePlan.games.forEach(game => {
+    const gameTime = new Date(game.date);
+    if (!earliestKickoff || gameTime < earliestKickoff) {
+      earliestKickoff = gameTime;
+    }
+  });
+
+  if (!earliestKickoff || earliestKickoff < new Date()) {
+    console.log("Cannot set form lock trigger: earliest kickoff is in the past.");
+    return;
+  }
+  
+  // --- [THE FIX] ---
+  // 1. Create the time-based trigger correctly.
+  const trigger = ScriptApp.newTrigger('executeFormLock')
+    .timeBased()
+    .at(earliestKickoff)
+    .create();
+
+  // 2. Get the unique ID of the trigger we just created.
+  const triggerId = trigger.getUniqueId();
+
+  // 3. Store metadata in properties, linking the trigger's ID to the form's ID.
+  const metadata = { formId: formId, week: gamePlan.week };
+  PropertiesService.getDocumentProperties().setProperty('triggerMeta_' + triggerId, JSON.stringify(metadata));
+
+  console.log(`Scheduled one-time form lock for ${earliestKickoff.toLocaleString()} with trigger ID ${triggerId}`);
+  SpreadsheetApp.getActiveSpreadsheet().toast(`Form will automatically lock at first kickoff.`);
+}
+
+/**
+ * A simple utility to delete a trigger by its unique ID.
+ */
+function deleteTriggerById(triggerId) {
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getUniqueId() === triggerId) {
+      ScriptApp.deleteTrigger(trigger);
+      break;
+    }
+  }
+}
+
 
 /** 
  * A reverse-lookup to find a week by form ID.
@@ -2862,44 +3129,77 @@ function handleFormSubmit(e) {
 }
 
 /**
- * The main controller for the form creation process.
+ * [FULLY REVISED] The main controller for the form creation process.
+ * Now includes a preliminary check for the existence of the LEAGUE schedule sheet
+ * and prompts the user to fetch it if it's missing.
  */
 function launchFormBuilder() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet(); // Get the spreadsheet object once
+  const ui = SpreadsheetApp.getUi();
   const docProps = PropertiesService.getDocumentProperties();
-  if (docProps.getProperty('configuration') == null) {
+  
+  // --- Check 1: Configuration ---
+  if (!docProps.getProperty('configuration')) {
     Logger.log(`No configuration data present, please begin by configuring the pool`);
-    const ui = SpreadsheetApp.getUi();
-    if (ui.alert(`Configuration Missing`,`No configuration data found, please run the "Configuration" function first before building your first sheet.\n\nClick OK to go there now.`,ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
+    if (ui.alert(`Configuration Missing`, `No configuration data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
       launchConfiguration();
-      return;
     } else {
-      Logger.log('User declined to create configuration to being processing form creation');
-      showToast('Unable to start form creation due to no configuration file')
-      return;
+      showToast('Form creation cancelled: No configuration found.');
     }
+    return;
   }
-  let openEnrollment = false;
+  
+  // --- Check 2: Members ---
   const config = JSON.parse(docProps.getProperty('configuration'));
-  if (docProps.getProperty('members') == null) {
+  let openEnrollment = false;
+  if (!docProps.getProperty('members')) {
     Logger.log(`No members data present.`);
-    const ui = SpreadsheetApp.getUi();
-    if (ui.alert(`Members Missing`,`No members data found, please run the "Member Management" function to add some participants, otherwise the form will default to providing a name prompt for all users${config.membershipLocked ? ' (you currently have membership locked and this will unlock membership.)': '.'}\n\nClick OK to go there now.`,ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
+    if (ui.alert(`Members Missing`, `No members data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
       launchMemberPanel();
       return;
     } else {
       if (config.membershipLocked) {
-        Logger.log(`Unlocking membership due to no members supplied prior to first form creation.`)
         config.membershipLocked = false;
-        saveProperties('configuration',config);
+        saveProperties('configuration', config);
+        showToast('Membership has been unlocked.', 'Notice');
       }
       openEnrollment = true;
-      Logger.log('User declined to create members to being processing form creation');
     }
   }
+
+  // --- [THE NEW LOGIC] Check 3: Schedule Data ---
+  const scheduleSheet = ss.getSheetByName(LEAGUE); // e.g., 'NFL'
+  if (!scheduleSheet) {
+    const response = ui.alert(
+      'Schedule Data Missing',
+      `The required '${LEAGUE}' schedule data sheet was not found. This is necessary to build the form matchups.\n\nWould you like to fetch and import the schedule data now?`,
+      ui.ButtonSet.YES_NO
+    );
+
+    if (response === ui.Button.YES) {
+      try {
+        // Run the fetchSchedule function with the specified parameters
+        showToast(`Fetching ${LEAGUE} schedule, this may take a moment...`, 'In Progress');
+        // Let the function auto-detect the year and current week, set auto=false, overwrite=true
+        fetchSchedule(ss, null, null, false, true); 
+        showToast('✅ Schedule data imported successfully!', 'Success');
+        // After fetching, we can proceed.
+      } catch (e) {
+        ui.alert('Error', `Failed to fetch schedule data: ${e.message}`, ui.ButtonSet.OK);
+        return; // Stop if the fetch fails
+      }
+    } else {
+      // User declined to fetch the data
+      showToast('Form creation cancelled: Schedule data is required.');
+      return;
+    }
+  }
+
+  // --- Final Steps ---
   const isFirstRun = docProps.getProperty('hasCreatedFirstForm') !== 'true';
   try {
     if (isFirstRun || !checkFileExists(docProps.getProperty('templateId'))) {
-      docProps.setProperty('hasCreatedFirstForm','false');
+      docProps.setProperty('hasCreatedFirstForm', 'false');
       handleFirstFormCreation();
     } else {
       const htmlTemplate = HtmlService.createTemplateFromFile('formCreatorPanel');
@@ -2907,7 +3207,8 @@ function launchFormBuilder() {
       SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Create Form${openEnrollment ? ' - Open Enrollment' : ''}`);
     }
   } catch (err) {
-    Logger.log(`Error starting form creation: ${err.stack}`)  
+    Logger.log(`Error starting form creation: ${err.stack}`);
+    ui.alert('An error occurred while launching the form builder.');
   }
 }
 
@@ -3165,48 +3466,53 @@ function createNewFormForWeek(gamePlan) {
     }
     // Clear out old data from properties
     delete forms[week];
-
-    // 4. Execute the "Worker"
-    const newFormDetails = buildFormFromGamePlan(gamePlan);
-    
-    // Record the current state of these properties for data fetching integrity
-    gamePlan.pickemsInclude = config.pickemsInclude;
-    gamePlan.survivorInclude = newFormDetails.survivorInclude;
-    gamePlan.eliminatorInclude = newFormDetails.eliminatorInclude;
-    gamePlan.pickemsAts = config.pickemsAts;
-    gamePlan.survivorAts = config.survivorAts;
-    gamePlan.eliminatorAts = config.eliminatorAts;
-
-    // 5. Save the new state
-    const newFormsData = {
-      formId: newFormDetails.formId,
-      editUrl: newFormDetails.editUrl,
-      publishedUrl: newFormDetails.publishedUrl,
-      active: true,
-      respondents: [],
-      nonRespondents: newFormDetails.eligibleMembers,
-      gamePlan: gamePlan
-    };
-    forms[week] = newFormsData;
-    forms[week].imported = false;
-
-    // 6. Storing properties
-    saveProperties('forms',forms);
-    
-    // 7. Setting up synce for form
-    try {
-      setFormSubmitTrigger(newFormDetails.formId, true) 
-    } catch (err) {
-      Logger.log(`Could not set up trigger for new week ${week} form: ${err.stack}`);
-    }
-    
-    showLinkDialog(newFormDetails.publishedUrl, `Success!`, `Open Week ${week} Form`, `Open '${gamePlan.formName}' and review if desired. Then share with your group! Keep in mind you have it set to ${gamePlan.membershipLocked ? 'allow new members to join via the form' : 'prevent new members from joining via the form'}`);
-
-    return { success: true, message: `✅ Successfully created form for week ${week}.` };
-    
   } catch (err) {
     Logger.log(`Failed to create form for week ${week}:`, err.stack);
     throw new Error(`Failed to create form: ${err.stack}`);
+  }
+  // 4. Execute the "Worker"
+  const newFormDetails = buildFormFromGamePlan(gamePlan);
+  try {
+    if (newFormDetails.formId) {
+      // Record the current state of these properties for data fetching integrity
+      gamePlan.pickemsInclude = config.pickemsInclude;
+      gamePlan.survivorInclude = newFormDetails.survivorInclude;
+      gamePlan.eliminatorInclude = newFormDetails.eliminatorInclude;
+      gamePlan.pickemsAts = config.pickemsAts;
+      gamePlan.survivorAts = config.survivorAts;
+      gamePlan.eliminatorAts = config.eliminatorAts;
+
+      // 5. Save the new state
+      const newFormsData = {
+        formId: newFormDetails.formId,
+        editUrl: newFormDetails.editUrl,
+        publishedUrl: newFormDetails.publishedUrl,
+        active: true,
+        respondents: [],
+        nonRespondents: newFormDetails.eligibleMembers,
+        gamePlan: gamePlan
+      };
+      forms[week] = newFormsData;
+      forms[week].imported = false;
+
+      // 6. Storing properties
+      saveProperties('forms',forms);
+      
+      // 7. Setting up synce for form
+      try {
+        setFormSubmitTrigger(newFormDetails.formId, true) 
+      } catch (err) {
+        Logger.log(`Could not set up trigger for new week ${week} form: ${err.stack}`);
+      }
+      
+      showLinkDialog(newFormDetails.publishedUrl, `Success!`, `Open Week ${week} Form`, `Open '${gamePlan.formName}' and review if desired. Then share with your group! Keep in mind you have it set to ${gamePlan.membershipLocked ? 'allow new members to join via the form' : 'prevent new members from joining via the form'}`);
+
+      return { success: true, message: `✅ Successfully created form for week ${week}.` };
+    } else {
+      Logger.log(`Encountered an error with the form creation during the 'buildFormFromGamePlan' function`);
+    }
+  } catch (err) {
+    Logger.log(`Despite making a form, an error was encountered during wrap-up. | ERROR: ${err.stack}`);
   }
 }
 
@@ -3229,7 +3535,7 @@ function getDatabaseSheet() {
       } else {
         docProps.deleteProperty('databaseId');
       }
-    } catch (e) {
+    } catch (err) {
       // This catch block runs if the file was deleted or permissions changed.
       Logger.log(`Could not open database sheet with ID "${dbId}". It may have been deleted. A new one will be created.`);
       docProps.deleteProperty('databaseId'); // Clear the invalid ID
@@ -3248,7 +3554,7 @@ function getDatabaseSheet() {
   const newDbId = newDb.getId();
   
   // Move to the forms folder as well
-  DriveApp.getFileById(newTemplateId).moveTo(formsFolder);
+  DriveApp.getFileById(newDbId).moveTo(formsFolder);
   
   // Add a helpful note for the user in the new sheet.
   newDb.getSheets()[0].getRange('A1').setValue(`This sheet is the private backend for the ${config.groupName} pool. Please do not delete, rename, or share this file.`);
@@ -3339,6 +3645,7 @@ function getFormsFolder(groupName) {
 function buildFormFromGamePlan(gamePlan) {
   try {
     // --- Setup and Variable Initialization ---
+    const ss = fetchSpreadsheet();
     const docProps = PropertiesService.getDocumentProperties();
     const config = JSON.parse(docProps.getProperty('configuration'));
     const memberData = JSON.parse(docProps.getProperty('members'));
@@ -3357,7 +3664,7 @@ function buildFormFromGamePlan(gamePlan) {
 
     const urlFormEdit = form.shortenFormUrl(form.getEditUrl());
     const urlFormPub = form.shortenFormUrl(form.getPublishedUrl());
-
+    ss.toast(`Created form and generated links`,`✅ EMPTY FORM CREATED`);
     try {
       // Get the initial count of sheets before linking
       const initialSheets = databaseSheet.getSheets();
@@ -3438,7 +3745,7 @@ function buildFormFromGamePlan(gamePlan) {
       
       if (existingSheet) {
         Logger.log(`An existing sheet named '${newSheetName}' was found. Archiving it now.`);
-        
+        ss.toast(`Found a former WK${week} sheet in the database, archiving now`,`💾 OLD RESPONSES ARCHIVED`);
         let archiveIndex = 1;
         let archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
         
@@ -3458,7 +3765,7 @@ function buildFormFromGamePlan(gamePlan) {
       // Now safely rename the newly linked sheet
       newResponseSheet.setName(newSheetName);
       newResponseSheet.activate(); // Brings the new tab to the front
-      
+      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`✅ DATABASE LINKED`);
       Logger.log(`Successfully linked form and renamed response sheet to '${newSheetName}'.`);
     } catch (err) {
       // If linking fails, delete the form to avoid orphans
@@ -3471,15 +3778,17 @@ function buildFormFromGamePlan(gamePlan) {
 
     // --- Build Pick'em Questions (if applicable) ---
       if (config.pickemsInclude) {
-      // 1. Add a Section Header to act as the title for this part of the form.
-      form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
-      // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
-      if (config.pickemsAts) {
-        form.addSectionHeaderItem()
-          .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
-          .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
+        ss.toast(`Creating pick 'ems questions for week ${week}`,`🏈 PICK 'EMS`);
+        // 1. Add a Section Header to act as the title for this part of the form.
+        form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
+        // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
+        if (config.pickemsAts) {
+          form.addSectionHeaderItem()
+            .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
+            .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
       }
-      buildPickemQuestions(form, gamePlan, config);
+      buildPickemQuestions(ss, form, gamePlan, config);
+      ss.toast(`Created pick 'ems questions for week ${week}`,`✅ PICK 'EMS DONE`);
     } else {
       Logger.log(`No pick 'ems pool active, moving on to survivor/eliminator`)
     }
@@ -3498,6 +3807,7 @@ function buildFormFromGamePlan(gamePlan) {
     let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts)
     // 1. First, find members active in BOTH contests and create their combined page.
     if (survivorIsActive && eliminatorIsActive) {
+      ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
       Logger.log('Creating possible destinations for instances where both Survivor and Eliminator are both active')
       memberData.memberOrder.forEach(memberId => {
         const member = memberData.members[memberId];
@@ -3515,9 +3825,26 @@ function buildFormFromGamePlan(gamePlan) {
           pageDestinations[memberId] = combinedPage; // Assign their destination
         }
       });
-    }  
+    }
+    ss.toast(`Created questions for members who are in both survivor and eliminator for week ${week}`,`✅&✅ SURVIVOR/ELIMINATOR DONE`);
     // 2. Next, handle members active in ONLY ONE contest.
-    Logger.log('Creating possible destinations members in only one of the Survivor or Eliminator contests')
+    
+    let text = `questions for members who are in both survivor and eliminator for week ${week}`;
+    let heading = `SURVIVOR OR ELIMINATOR`;
+    let icon = `👑/💀`;
+    let doneIcon = `✅/✅`
+    if (config.survivorInclude && !config.eliminatorInclude) {
+      text = `questions for members who are in survivor for week ${week}`;
+      heading = `SURVIVOR`;
+      icon = `👑`;
+      doneIcon = `✅`
+    } if (!config.survivorInclude && config.eliminatorInclude) {
+      text = `questions for members who are in eliminator for week ${week}`;
+      heading = `ELIMINATOR`;
+      icon = `💀`;
+      doneIcon = `✅`
+    }
+    ss.toast(`Creating ${text}`, `${icon} ${heading}`);
     memberData.memberOrder.forEach(memberId => {
       // Skip members we've already handled
       if (pageDestinations[memberId]) return;
@@ -3540,7 +3867,9 @@ function buildFormFromGamePlan(gamePlan) {
         }
       }
     });
-
+    ss.toast(`Created ${text}`, `${doneIcon} ${heading}`);
+    Logger.log(`Created ${text}`);
+    
     // 3. Finally, build the name dropdown using our new destination map.
     Logger.log('Creating links to name drop-down based on members enrollment in Survivor and/or Eliminator pools')
     let nameChoices = [], eligibleMembers = [];
@@ -3557,24 +3886,34 @@ function buildFormFromGamePlan(gamePlan) {
         eligibleMembers.push(member.name);
       }
     });
+    ss.toast(`Linked all members to their respective pages for navigation`,`🔀 MEMBERS ROUTED`);
     
     // Add 'New User' option if applicable
     if (!config.membershipLocked) {
-      Logger.log('🔓 Membership is unlocked--creating a new user question');
-      const newUserPage = buildNewUserPage(form, config, gamePlan);
+      const text = 'Membership is unlocked--creating a new user question';
+      Logger.log('🔓 '+ text);
+      ss.toast(text,'🔓 MEMBERSHIP UNLOCKED')
+      const newUserPage = buildNewUserPage(ss, form, config, gamePlan);
       nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
-
     } else {
-      Logger.log('🔒 Membership is locked--no new user question added');
+      const text = 'Membership is locked--no new user question added';
+      Logger.log('🔓 '+ text);
+      ss.toast(text,'🔒 MEMBERSHIP LOCKED')
     }
     
     Logger.log('📝 Setting Name Choices');
     nameQuestion.setChoices(nameChoices);
+    ss.toast('Setting all choices for name question drop-down','📝 NAME CHOICES SET');
 
     // --- Final Touches ---
     Logger.log('↩️ Returning information to form creation controller...');
+    ss.toast(`Returning information to form creation controller...`,`↩️ REROUTING DATA`);
+    
+    const formId = form.getId();
+    if (config.kickoffLock) setOneTimeFormLockTrigger(formId, gamePlan);
+    
     return {
-      formId: form.getId(),
+      formId: formId,
       editUrl: urlFormEdit,
       publishedUrl: urlFormPub,
       eligibleMembers: eligibleMembers,
@@ -3620,7 +3959,7 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
 /**
  * Builds all Pick'em related questions on the form.
  */
-function buildPickemQuestions(form, gamePlan, config) {
+function buildPickemQuestions(ss, form, gamePlan, config) {
   Logger.log("Building Pick'em questions...");
   gamePlan.games.forEach(game => {
     let item = form.addMultipleChoiceItem();
@@ -3641,6 +3980,7 @@ function buildPickemQuestions(form, gamePlan, config) {
         item.createChoice(`${!config.hideEmojis ? ' ' + LEAGUE_DATA[game.homeTeam].mascot: ''} ${game.homeTeam}`)]) // + LEAGUE_DATA[game.homeTeam].colors_emoji 
       .showOtherOption(false)
       .setRequired(true);
+    ss.toast(`Added pick 'ems question of ${tiebreakerMatchup}`,`${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot}`);
   });
   if (config.tiebreakerInclude) { // Excludes tiebreaker question if tiebreaker is disabled
     let numberValidation = FormApp.createTextValidation()
@@ -3655,12 +3995,14 @@ function buildPickemQuestions(form, gamePlan, config) {
       .setHelpText(helpText)
       .setRequired(true)
       .setValidation(numberValidation);
+    ss.toast(`Created tiebreaker question for ${tiebreakerMatchup}`,`⚖️ TIEBREAKER CREATED`);
   }
-  if(config.commentsInclude) { // Excludes comment question if comments are disabled
+  if(!config.commentsExclude) { // Excludes comment question if comments are disabled
     form.addTextItem()
       .setTitle('Comments')
       .setHelpText('Passing thoughts...');
-  }  
+    ss.toast(`Added comment box for pick 'ems`,`✍ COMMENT BOX CREATED`);
+  }
 }
 
 /**
@@ -3673,7 +4015,7 @@ function buildPickemQuestions(form, gamePlan, config) {
  * @param {Object} gamePlan The game plan for the current week.
  * @returns {PageBreakItem} The created page break item for navigation.
  */
-function buildNewUserPage(form, config, gamePlan) {
+function buildNewUserPage(ss, form, config, gamePlan) {
   // 1. Create the page break and set its final destination.
   const newUserPage = form.addPageBreakItem().setTitle('New User Signup');
   newUserPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
@@ -3689,44 +4031,46 @@ function buildNewUserPage(form, config, gamePlan) {
     .setHelpText('Please enter your name as it will appear in the pool.')
     .setRequired(true)
     .setValidation(nameValidation);
-
+  
   // --- [THE NEW LOGIC] ---
   // 3. Conditionally add contest questions directly to this page.  
   
   // Check if it's the first week for the Survivor pool
   const survivorIsActiveFirstWeek = !config.survivorDone && config.survivorInclude && gamePlan.week == config.survivorStartWeek;
   if (survivorIsActiveFirstWeek) {
-    Logger.log(`New user section ELIGIBLE for survivor start week (${gamePlan.week}), adding queston...`);
+    Logger.log(`👑 New user section ELIGIBLE for survivor start week (${gamePlan.week}), adding queston...`);
     const sLS = config.survivorLives;
     const isAts = config.survivorAts;
     let survivorHelp = `Select the team you believe will WIN${isAts ? ' AGAINST THE SPREAD':''}.  |  `;
-    survivorHelp += sLS == 1 ? `One Survivor Life: ${createLivesString(sLS)}` : `Survivor Lives: ${createLivesString(sLS)} (${member.sL[week-2] < sLS ? member.sL[week-2] + ' remaining' : 'all remaining'})`;    
+    survivorHelp += sLS == 1 ? `One Survivor Life: ${createLivesString(sLS)}` : `Survivor Lives: ${createLivesString(sLS)} (all remaining)`;    
     const allTeamsForWeek = buildTeamList(gamePlan, config, isAts);
     form.addListItem()
       .setTitle(`Survivor ${isAts ? "ATS" : "" } Pick`)
       .setHelpText(survivorHelp)
       .setChoiceValues(allTeamsForWeek)
       .setRequired(true);
+    ss.toast(`Generated new user survivor question`,`👑 NEW USER SURVIVOR`);
   } else {
-    Logger.log(`New user section INELIGIBLE for survivor start week (${gamePlan.week})`);
+    Logger.log(`👑 New user section INELIGIBLE for survivor start week (${gamePlan.week})`);
   }
 
   // Check if it's the first week for the Eliminator pool
   const eliminatorIsActiveFirstWeek = !config.eliminatorDone && config.eliminatorInclude && gamePlan.week == config.eliminatorStartWeek;
   if (eliminatorIsActiveFirstWeek) {
-    Logger.log(`New user section ELIGIBLE for eliminator start week (${gamePlan.week}), adding queston...`);
+    Logger.log(`💀 New user section ELIGIBLE for eliminator start week (${gamePlan.week}), adding queston...`);
     const eLS = config.eliminatorLives;
     const isAts = config.eliminatorAts;
     let eliminatorHelp = `Select the team you believe will LOSE${isAts ? ' AGAINST THE SPREAD':''}.  |  `;
-    eliminatorHelp += eLS == 1 ? `One Eliminator Life: ${createLivesString(eLS)}` : `Eliminator Lives: ${createLivesString(eLS)} (${member.eL[week-2] < eLS ? member.eL[week-2] + ' remaining' : 'all remaining'})`;    
+    eliminatorHelp += eLS == 1 ? `One Eliminator Life: ${createLivesString(eLS)}` : `Eliminator Lives: ${createLivesString(eLS)} (all remaining)`;    
     const allTeamsForWeek = buildTeamList(gamePlan, config, isAts);
     form.addListItem()
       .setTitle(`Eliminator ${isAts ? "ATS" : "" } Pick`)
       .setHelpText(eliminatorHelp)
       .setChoiceValues(allTeamsForWeek)
       .setRequired(true);
+    ss.toast(`Generated new user eliminator question`,`💀 NEW USER ELIMINATOR`);
   } else {
-    Logger.log(`New user section INELIGIBLE for eliminator start week (${gamePlan.week})`);
+    Logger.log(`💀 New user section INELIGIBLE for eliminator start week (${gamePlan.week})`);
   }
   
   // 4. Return the page break item so the main function can use it for navigation.
@@ -3838,34 +4182,102 @@ function formatTime(hour,minute) {
   return `${hour > 12 ? hour - 12 : hour}:${minute < 10 ? '0' + minute : minute} ${suffix}`;
 }
 
-function deleteDatabaseId() {
-  deleteProperties('databaseId');
+
+
+
+
+/**
+ * [NEW] The main function to launch the "Auto-Fetch Settings" panel.
+ * This should be called from a menu item.
+ */
+function showAutoFetchPanel() {
+  const html = HtmlService.createHtmlOutputFromFile('triggerPanel')
+      .setWidth(450)
+      .setHeight(300);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Auto-Fetch Settings');
 }
-function deleteFormTemplateId() {
-  deleteProperties('templateId');
+
+/**
+ * [NEW] Fetches the details of the existing weekly fetch trigger, if it exists.
+ * This is called by the panel when it loads.
+ * @returns {Object|null} An object with { day, hour } or null if no trigger is found.
+ */
+function getWeeklyFetchTrigger() {
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getHandlerFunction() === 'runWeeklyFetch') {
+      // Unfortunately, Apps Script doesn't let us read the day/hour directly.
+      // We must store this information in properties when we create the trigger.
+      const triggerInfo = PropertiesService.getDocumentProperties().getProperty('weeklyFetchTriggerInfo');
+      if (triggerInfo) {
+        return JSON.parse(triggerInfo);
+      }
+    }
+  }
+  return null; // No trigger found
 }
-function deleteFormFolderId() {
-  deleteProperties('folderId');
+
+/**
+ * [NEW] Creates or updates the weekly time-based trigger.
+ * @param {Object} data An object with { day, hour }.
+ */
+function setWeeklyFetchTrigger(data) {
+  const { day, hour } = data;
+
+  // First, delete any existing trigger to ensure there's only one.
+  deleteWeeklyFetchTrigger();
+
+  // Create the new trigger to run the 'runWeeklyFetch' wrapper function.
+  ScriptApp.newTrigger('runWeeklyFetch')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay[day.toUpperCase()])
+    .atHour(hour)
+    .nearMinute(15) // Run sometime around the 15-minute mark to distribute load
+    .create();
+
+  // Store the settings so we can display them to the user later.
+  const triggerInfo = { day: day, hour: hour };
+  PropertiesService.getDocumentProperties().setProperty('weeklyFetchTriggerInfo', JSON.stringify(triggerInfo));
+
+  SpreadsheetApp.getActiveSpreadsheet().toast(`✅ Auto-fetch scheduled for every ${day} around ${hour}:00.`);
+  return { success: true };
 }
-function deleteFormFolderOld() {
-  deleteProperties('folder');
+
+/**
+ * [NEW] Deletes the weekly fetch trigger.
+ */
+function deleteWeeklyFetchTrigger() {
+  let wasDeleted = false;
+  const allTriggers = ScriptApp.getProjectTriggers();
+  for (const trigger of allTriggers) {
+    if (trigger.getHandlerFunction() === 'runWeeklyFetch') {
+      ScriptApp.deleteTrigger(trigger);
+      wasDeleted = true;
+    }
+  }
+  
+  // Also clear the stored info
+  PropertiesService.getDocumentProperties().deleteProperty('weeklyFetchTriggerInfo');
+  
+  if (wasDeleted) {
+    SpreadsheetApp.getActiveSpreadsheet().toast('❌ Auto-fetch has been disabled.');
+  }
+  return { success: true };
 }
-function deleteFormsDataProp() {
-  deleteProperties('forms');
-}
-function deleteConfigurationProp() {
-  deleteProperties('configuration');
-}
-function testGetFormsFolder() {
-  Logger.log(getFormsFolder());
-}
-function getTemplateFormTest() {
-  const docProps = PropertiesService.getDocumentProperties();
-  const templateId = docProps.getProperty('hasCreatedFirstForm');
-  Logger.log(templateId);
-}
-function deleteFirstFormCheck() {
-  deleteProperties('hasCreatedFirstForm');
+
+/**
+ * [NEW WRAPPER] This is the function the trigger will actually call.
+ * It provides the correct parameters to your main fetchSchedule function.
+ */
+function runWeeklyFetch() {
+  console.log("Weekly auto-fetch trigger is running...");
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const year = fetchYear();
+  const currentWeek = null; // Let fetchSchedule determine the current week
+  const isAuto = true;
+  const shouldOverwrite = true;
+  
+  fetchSchedule(ss, year, currentWeek, isAuto, shouldOverwrite);
 }
 
 
@@ -3916,10 +4328,10 @@ function getFormImportData(week) {
       startedGames: matchups,
       offerPartialImport: offerPartialImport
     };
-  } catch (e) {
-    console.error("Error in getFormImportData: ", e);
+  } catch (err) {
+    Logger.log("Error in getFormImportData: ", err);
     // Re-throw the error so the client's onFailure handler gets it.
-    throw new Error(`Failed to prepare for import: ${e.message}`);
+    throw new Error(`Failed to prepare for import: ${err.stack}`);
   }
 }
 
@@ -3945,7 +4357,7 @@ function executePickImport(week, importOnlyStartedGames) {
   // --- 1. Fetch All Necessary Data ---
   
   const docProps = PropertiesService.getDocumentProperties();
-  const config = JSON.parse(docProps.getProperty('configuration')) || {};
+  let config = JSON.parse(docProps.getProperty('configuration')) || {};
   const memberData = JSON.parse(docProps.getProperty('members')) || {};
   let formsData = JSON.parse(docProps.getProperty('forms')) || {};
   const databaseSheet = getDatabaseSheet();
@@ -4038,6 +4450,23 @@ function executePickImport(week, importOnlyStartedGames) {
       const text = `✅ Successfully imported Pick 'Em data into week '${week}' sheet.`;
       Logger.log(text);
       ss.toast(text,`PICK 'EMS IMPORT`)
+      if (!config.initialized) {
+        const ui = fetchUi();
+        let prompt = ui.alert('Create all accessory sheets now?', ui.ButtonSet.OK_CANCEL);
+        if (prompt == "OK") {
+          try {
+            setupSheets();
+          } catch (err) {
+            ss.toast('Issue creating setup sheets, run again from the utilities menu');
+            Logger.logger('Issue creating setup sheets | ERROR: ' + err.stack);
+          }
+          ss.toast(`✅ Successfully configured all other sheets.`, 'SETUP SHEETS SUCCESS');
+          config.initialized = true;
+          saveProperties('configuration',config);
+        } else {
+          ss.toast(`❎ Declined setup of all other sheets, try again via the "Utilities" menu later.`);
+        }
+      }
     } catch (err) {
       const text = `❗ Failed to import Pick 'Em data into week '${week}' sheet.`;
       Logger.log(text + ' | ERROR: ' + err.stack);
@@ -4118,6 +4547,64 @@ const filterMatchups = (matchupToColMap, startedGames) => {
   
   return result;
 };
+
+
+/**
+ * Intelligently shows or hides the "Margin" columns on the OUTCOMES sheet
+ * based on whether any ATS mode is active in the configuration.
+ *
+ * @param {Object} [config] Optional: The configuration object. If not provided, it will be fetched.
+ */
+function updateOutcomeSheetVisibility(config) {
+  try {
+    // 1. Receive or Fetch Config
+    if (!config) {
+      const docProps = PropertiesService.getDocumentProperties();
+      config = JSON.parse(docProps.getProperty('configuration') || '{}');
+    }
+    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
+    if (!outcomesSheet) {
+      ss.toast(`OUTCOMES sheet not found. Cannot update column visibility.`,`❗ NO OUTCOMES SHEET FOUND`)
+      Logger.log("OUTCOMES sheet not found. Cannot update column visibility.");
+      return; // Exit gracefully if the sheet doesn't exist.
+    }
+
+    // 2. Determine the required state
+    const isAnyAtsActive = config.pickemsAts || config.survivorAts || config.eliminatorAts;
+    
+    // 3. Check the current state of the first margin column to avoid unnecessary actions.
+    const firstMarginColumn = 2; // Column B
+    const isCurrentlyVisible = !outcomesSheet.isColumnHiddenByUser(firstMarginColumn);
+
+    // 4. Act only if the current state doesn't match the required state.
+    if (isAnyAtsActive && !isCurrentlyVisible) {
+      // ATS is ON, but columns are HIDDEN -> UNHIDE them.
+      ss.toast('Showing ATS Margin columns...',`✅ MARGIN COLUMNS VISIBLE`);
+      // Loop through all even columns and unhide them individually.
+      // Unfortunately, Sheets API does not have an "unhideColumns" for multiple non-contiguous ranges.
+      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
+        outcomesSheet.unhideColumn(outcomesSheet.getRange(1, i));
+      }
+      
+    } else if (!isAnyAtsActive && isCurrentlyVisible) {
+      // ATS is OFF, but columns are VISIBLE -> HIDE them.
+      ss.toast('Hiding ATS Margin columns...',`✅ MARGIN COLUMNS HIDDEN`);
+      // It's more efficient to hide columns in batches if possible, but looping is reliable.
+      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
+        outcomesSheet.hideColumns(i);
+      }
+    }
+    // If state is already correct (e.g., ATS is on and columns are visible), do nothing.
+
+  } catch (error) {
+    ss.toast(`Failed to adjust the column visibility of the ${LEAGUE}_OUTCOMES sheet`,`❗ ERROR HIDING COLUMNS`)
+    Logger.log("Error updating OUTCOMES sheet visibility: " + error.toString());
+  }
+}
+
+
 
 
 /**
@@ -4250,7 +4737,7 @@ function getInvalidPickMatchups() {
     }
     return pastGames;
   } catch (err) {
-    console.error("Could not fetch scoreboard data: " + err.toString());
+    Logger.log("Could not fetch scoreboard data: " + err.toString());
     return []; // Return an empty array on failure
   }
 }
@@ -4804,7 +5291,7 @@ function calculateAtsResult(pick, winner, loser, margin, spread) {
       return false;
     }
   } catch (e) {
-    console.error(`Error calculating ATS result for spread "${spread}": ${e.toString()}`);
+    Logger.log(`Error calculating ATS result for spread "${spread}": ${e.toString()}`);
     return false;
   }
 }
@@ -5429,7 +5916,7 @@ function outcomesSheet(ss) {
   sheet.setRowHeight(headerRow1, 40);
 
   // Week Type Headers (Row 2)
-  sheet.getRange(headerRow2, 1, 1, totalCols).setValues([weekTypeHeaders])
+  sheet.getRange(headerRow2, 1, 1, totalCols).setValues([weekTypeHeaders]).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP)
       .setBackground('#333333').setFontColor('#ffffff').setFontWeight('bold').setFontStyle('italic').setFontSize(8)
       .setHorizontalAlignment('center').setVerticalAlignment('middle');
   sheet.setRowHeight(headerRow2, 25);
@@ -5537,6 +6024,7 @@ function outcomesSheet(ss) {
   allConditionalFormatRules.unshift(zeroRule);
   sheet.setConditionalFormatRules(allConditionalFormatRules);
 
+  
   Logger.log(`Completed setting up ${LEAGUE} OUTCOMES sheet`);
 }
 
@@ -5705,6 +6193,63 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     }
   }
 }
+
+/**
+ * Intelligently shows or hides the "Margin" columns on the OUTCOMES sheet
+ * based on whether any ATS mode is active in the configuration.
+ *
+ * @param {Object} [config] Optional: The configuration object. If not provided, it will be fetched.
+ */
+function updateOutcomeSheetVisibility(config) {
+  try {
+    // 1. Receive or Fetch Config
+    if (!config) {
+      const docProps = PropertiesService.getDocumentProperties();
+      config = JSON.parse(docProps.getProperty('configuration') || '{}');
+    }
+    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
+    if (!outcomesSheet) {
+      ss.toast(`OUTCOMES sheet not found. Cannot update column visibility.`,`❗ NO OUTCOMES SHEET FOUND`)
+      Logger.log("OUTCOMES sheet not found. Cannot update column visibility.");
+      return; // Exit gracefully if the sheet doesn't exist.
+    }
+
+    // 2. Determine the required state
+    const isAnyAtsActive = config.pickemsAts || config.survivorAts || config.eliminatorAts;
+    
+    // 3. Check the current state of the first margin column to avoid unnecessary actions.
+    const firstMarginColumn = 2; // Column B
+    const isCurrentlyVisible = !outcomesSheet.isColumnHiddenByUser(firstMarginColumn);
+
+    // 4. Act only if the current state doesn't match the required state.
+    if (isAnyAtsActive && !isCurrentlyVisible) {
+      // ATS is ON, but columns are HIDDEN -> UNHIDE them.
+      ss.toast('Showing ATS Margin columns...',`✅ MARGIN COLUMNS VISIBLE`);
+      // Loop through all even columns and unhide them individually.
+      // Unfortunately, Sheets API does not have an "unhideColumns" for multiple non-contiguous ranges.
+      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
+        outcomesSheet.unhideColumn(outcomesSheet.getRange(1, i));
+      }
+      
+    } else if (!isAnyAtsActive && isCurrentlyVisible) {
+      // ATS is OFF, but columns are VISIBLE -> HIDE them.
+      ss.toast('Hiding ATS Margin columns...',`✅ MARGIN COLUMNS HIDDEN`);
+      // It's more efficient to hide columns in batches if possible, but looping is reliable.
+      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
+        outcomesSheet.hideColumns(i);
+      }
+    }
+    // If state is already correct (e.g., ATS is on and columns are visible), do nothing.
+
+  } catch (error) {
+    ss.toast(`Failed to adjust the column visibility of the ${LEAGUE}_OUTCOMES sheet`,`❗ ERROR HIDING COLUMNS`)
+    Logger.log("Error updating OUTCOMES sheet visibility: " + error.toString());
+  }
+}
+
+
 
 /** 
  * TOTAL Sheet Creation / Adjustment
@@ -6798,10 +7343,11 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   
   // Insert Members
   let members = [];
-  if (!displayEmpty) { //|| forms[week].respondents == totalMembers) {
+  if (displayEmpty) { //|| forms[week].respondents == totalMembers) {
     members = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
   } else {
     members = memberData.memberOrder.map(id => [memberData.members[id]?.name]);
+    Logger.log('all: ' + members);
     members = [];
 
     // Re-sorts based on memberOrder, then applies conversion to the name
@@ -6813,8 +7359,8 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
       return resolvedIndexA - resolvedIndexB;
     });
     members = sortedRespondents.map((id) => [memberData.members[id]?.name]);
+    Logger.log('filtered: ' + members);
   }
-
   let totalMembers = members.length;
   
   if (totalMembers <= 0) {
@@ -7000,8 +7546,10 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   }
   if (config.tiebreakerInclude) {
     ss.setNamedRange(`${LEAGUE}_TIEBREAKER_${week}`,sheet.getRange(entryRowStart,tiebreakerCol,totalMembers,1));
-    let validRule = SpreadsheetApp.newDataValidation().requireNumberBetween(0,120)
-      .setHelpText('Must be a number')
+    let validRule = SpreadsheetApp.newDataValidation()
+      .requireNumberBetween(0,150)
+      .requireTextMatchesPattern('^[0-9]+$')
+      .setHelpText('Must be an integer between 0 and 120')
       .build();
     sheet.getRange(outcomeRow,tiebreakerCol).setDataValidation(validRule);
   }
