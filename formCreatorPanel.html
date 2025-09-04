@@ -510,7 +510,7 @@
           editedSpreadData[gameId] = {};
         }
         editedSpreadData[gameId][dataType] = newValue;
-        edits = true;
+        if (!editedData) editedData = true;
 
         // Revert the cell to text
         cell.innerHTML = newValue;
@@ -574,6 +574,7 @@
           const newValue = input.value.trim();
           if (!editedSpreadData[gameId]) editedSpreadData[gameId] = {};
           editedSpreadData[gameId][dataType] = newValue;
+          if (!editedData) editedData = true;
       }
       
       // After any change, re-check the status message
@@ -870,13 +871,6 @@
         return;
       }
 
-      const validationResult = validateRequiredData(includedGameIds, weekMatchups);
-      if (!validationResult.isValid) {
-        hideLoader();
-        alert(validationResult.message);
-        return;
-      }
-
       const formName = `${config.groupName} - Week ${selectedWeek} - ${config.year}`
       // Now, build the detailed "game plan" for only the included games.
       const gamePlan = {
@@ -884,7 +878,14 @@
         membershipLocked: config.membershipLocked,
         formName: formName,
         games: []
-      };
+      }
+
+      const validationResult = validateRequiredData(includedGameIds, weekMatchups);
+      if (!validationResult.isValid) {
+        hideLoader();
+        alert(validationResult.message);
+        return;
+      }
 
       includedGameIds.forEach(gameId => {
         const originalGame = weekMatchups.find(g => `${g.awayTeam}@${g.homeTeam}` === gameId);
