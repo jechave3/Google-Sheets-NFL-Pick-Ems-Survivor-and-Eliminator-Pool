@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 0; margin: 0; background-color: #FFFFFF; }
+    .container { padding: 20px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: 600; color: #333; margin-bottom: 5px; font-size: 14px; }
+    select, input[type="text"] { width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+    select:focus, input[type="text"]:focus { outline: none; border-color: #013369; box-shadow: 0 0 0 1px #013369; }
+    .button-section { padding: 20px; background-color: #f8f9fa; border-top: 1px solid #E8EAED; }
+    .button-row { display: flex; gap: 8px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #B0B0B0; color: white; }
+    .btn-secondary:hover { background-color: #888; }
+    #processing { display: none; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+
+  <div id="form-container">
+    <div class="container">
+      <div class="form-group">
+        <label for="member-select">Member to Rename</label>
+        <select id="member-select">
+          <option value="" disabled selected>Loading members...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="new-name-input">New Name</label>
+        <input type="text" id="new-name-input" placeholder="Enter the new name">
+      </div>
+    </div>
+
+    <div class="button-section">
+      <div class="button-row">
+        <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="handleSubmit()">Rename Member</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="processing">
+      <p>Processing...</p>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Fetch the member list to populate the dropdown
+      google.script.run
+        .withSuccessHandler(populateDropdown)
+        .withFailureHandler(onLoadFailure)
+        .fetchMembers();
+    });
+
+    function populateDropdown(names) {
+      const select = document.getElementById('member-select');
+      select.innerHTML = ''; // Clear "Loading..."
+
+      if (names && names.length > 0) {
+        select.innerHTML = '<option value="" disabled selected>Select a member</option>';
+        names.forEach(name => {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          select.appendChild(option);
+        });
+      } else {
+        select.innerHTML = '<option value="" disabled selected>No members found</option>';
+      }
+    }
+
+    function onLoadFailure(error) {
+        alert('Could not load member list: ' + error.message);
+    }
+    
+    function handleSubmit() {
+      const oldName = document.getElementById('member-select').value;
+      const newName = document.getElementById('new-name-input').value.trim();
+
+      // --- Client-side validation ---
+      if (!oldName) {
+        alert('Please select a member to rename.');
+        return;
+      }
+      if (!newName) {
+        alert('Please enter a new name.');
+        return;
+      }
+      if (oldName === newName) {
+        alert('The new name must be different from the old name.');
+        return;
+      }
+      
+      document.getElementById('form-container').style.display = 'none';
+      document.getElementById('processing').style.display = 'block';
+
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(onSubmitFailure)
+        .processRenameSubmission({ oldName: oldName, newName: newName });
+    }
+    
+    function onSubmitSuccess(response) {
+      alert(response.message);
+      google.script.host.close();
+    }
+
+    function onSubmitFailure(error) {
+      document.getElementById('form-container').style.display = 'block';
+      document.getElementById('processing').style.display = 'none';
+      alert('Error renaming member: ' + error.message);
+    }
+  </script>
+</body>
+</html>
