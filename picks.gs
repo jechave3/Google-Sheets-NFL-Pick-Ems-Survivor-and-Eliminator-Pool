@@ -4991,7 +4991,7 @@ function updateSurvElimSheet(ss, contestType) {
       const totalLives = parseInt(config[`${contestType}Lives`], 10) || 1;
       if (done && currentLives > 0) done = false;
       // a) Build the "Dots of Life" string.
-      const livesDots = '🟢'.repeat(currentLives) + '⚫'.repeat(Math.max(0, totalLives - currentLives));
+      const livesDots = totalLives > 1 ? '🟢'.repeat(currentLives) + '⚫'.repeat(Math.max(0, totalLives - currentLives)) : (currentLives > 0 ? '🟢' : '❌') ;
       newLivesData.push([livesDots]);
 
       // b) Get the revives count.
