@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 20px; }
+    h3 { color: black; margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 0px;}
+    .container { display: flex; gap: 20px; }
+    .column { flex: 1; font-size: 13px; }
+    h4 { color: #013369; margin-top: 20; border-bottom: 1px solid #eee; padding-bottom: 10px;}
+    .container { display: flex; gap: 20px; }
+    .column { flex: 1; font-size: 13px; }
+    ul { margin: 0; padding-left: 20px; }
+    .options { margin-top: 20px; background-color: #f8f9fa; padding: 15px; border-radius: 4px; }
+    .button-section { padding: 16px; background-color: #f8f9fa; }
+    .button-row { display: flex; gap: 8px; padding: 12px 8px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    .dropdown-select { width: 40%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; margin-top: 6px; background-color: white; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; padding-right: 40px; max-width: 110px; }
+    .dropdown-select:focus { outline: none; border-color: #D50A0A; box-shadow: 0 0 0 1px #D50A0A; }
+    .dropdown-select:hover { border-color: #D50A0A; }
+    .dropdown-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; min-height: 30px; }
+    .dropdown-label { font-size: 14px; color: #202124; flex: 1; }
+    .tooltip { position: relative; display: inline-block; cursor: help; }
+    .tooltip .tooltiptext { text-transform: none; visibility: hidden; font-size: 10pt; width: 200px; background-color: #ffffff; border-radius: 6px; border: 2px solid #D50A0A; color: #000000; text-align: center; padding: 5px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.5s; }
+    .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+    .switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #999; transition: 0.3s; border-radius: 10px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: 0.3s; border-radius: 50%; }
+    input:checked+.slider { background-color: #D50A0A; }
+    input:checked+.slider:before { transform: translateX(16px); }
+    .slider-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
+    .slider-label { flex: 1; margin-right: 15px; cursor: pointer; }
+    .details-text { font-size: 11px; margin-top: 5px; color: #5f6368; padding-left: 2px; }
+    .new-members { background-color: #ffecde; border: 1px solid #ff913d; padding: 15px; border-radius: 4px; }
+    .new-member-alert-active { background-color: #d7e7f7; border: 1px solid #8eb0d1; }
+    .responded-column { background-color: #d7e7f7; border: 1px solid #8eb0d1; padding: 10px; border-radius: 4px; }
+    .non-respondent-column { background-color: #fff0f0; border: 1px solid #ffdddd; padding: 10px; border-radius: 4px; }
+    .new-respondent { font-weight: bold; color: #ed6700; }
+    #confirm-import-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 200; }
+    .confirm-dialog { background-color: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 450px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    .confirm-dialog p { color: #555; }
+    .confirm-dialog .confirm-details { background-color: #f8f9fa; border: 1px solid #eee; border-radius: 4px; padding: 10px; margin-top: 15px; text-align: left; font-size: 13px; }
+    .header-block { background-color: #f8f9fa; border: 1px solid #ddd; padding: 15px; border-radius: 4px; margin-top: 0; transition: background-color 0.3s ease; }
+    
+  </style>
+</head>
+<body>
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+  </div>
+  
+  <div id="import-content" class="hidden">
+    <div id="header-block" class="header-block">
+      <div class="dropdown-row">
+        <h3 id="panel-title" style="margin:0;"></h3>
+        <select id="week-select" class="dropdown-select"></select>
+      </div>
+      <div id="new-member-alert" class="hidden" style="margin-top: 10px;">
+        <strong style="font-size: 11pt;">✏️ New Members Found!</strong>
+        <p style="font-size: 10pt; margin: 5px 0 0 0;">Use the "Member Management" panel to <strong>rearrange</strong> or <strong>remove</strong> new members before importing picks.</p>
+      </div>
+    </div>
+    <br>
+    <!-- This 'container' div now acts as the main flexbox wrapper for all three columns -->
+    <div class="container">
+    
+      <!-- Column 1: New Members -->
+      <div class="column new-members hidden" id="new-member-column">
+        <strong>⭐ New This Week:</strong>
+        <ul id="new-member-list"></ul>
+      </div>
+
+      <!-- Column 2: Responded -->
+      <div class="column responded-column">
+        <strong>✔️ Responded:</strong>
+        <ul id="respondent-list"></ul>
+      </div>
+
+      <!-- Column 3: Yet to Respond -->
+      <div class="column non-respondent-column">
+        <strong>❌ Yet to Respond:</strong>
+        <ul id="non-respondent-list"></ul>
+      </div>
+      
+    </div>
+
+    <div id="options-container" class="options"></div>
+
+    <div class="button-row">
+      <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="import-btn">Import Picks</button>
+    </div>
+
+    <div id="confirm-import-overlay" class="hidden">
+    <div class="confirm-dialog">
+      <h3>Confirm Import</h3>
+      <p id="confirm-warning-text"></p>
+      <div class="confirm-details">
+        <strong>Details:</strong>
+        <ul id="confirm-details-list">
+          <!-- Details will be inserted here by JavaScript -->
+        </ul>
+      </div>
+      <div class="button-row">
+        <button type="button" class="btn btn-secondary" id="final-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="final-import-btn">Yes, Import Now</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let gamesToImport = [], pastGames= [], futureGames = [];
+    let height = document.documentElement.scrollHeight;
+    const minHeight = document.documentElement.scrollHeight;
+    let alertHeight = 0;
+    const loader = document.getElementById('loading-overlay');
+    function showLoader() {
+      if (loader) {
+        loader.classList.remove('hidden');
+      }
+    }
+    function hideLoader() {
+      if (loader) {
+        loader.classList.add('hidden');
+      }
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      showLoader();
+      google.script.run
+        .withSuccessHandler(buildImportPanel)
+        .withFailureHandler(onLoadFailure)
+        .getFormImportData();
+    });
+
+    /**
+     * The main function that builds the entire UI after receiving data.
+     */
+    function buildImportPanel(data) {
+      
+      // --- 1. Clear previous content before rebuilding ---
+      document.getElementById('new-member-alert').classList.add('hidden');
+      document.getElementById('new-member-column').classList.add('hidden');
+      document.getElementById('new-member-list').innerHTML = '';
+      document.getElementById('respondent-list').innerHTML = '';
+      document.getElementById('non-respondent-list').innerHTML = '';
+      
+      // --- 2. Populate the Week Selector Dropdown (Unchanged) ---
+      const weekSelect = document.getElementById('week-select');
+      if (weekSelect.options.length === 0) {
+        if (data.allCreatedWeeks && data.allCreatedWeeks.length > 0) {
+          data.allCreatedWeeks.forEach(weekNum => {
+            const option = document.createElement('option');
+            option.value = weekNum;
+            option.textContent = `Week ${weekNum}`;
+            weekSelect.appendChild(option);
+          });
+          // Add the change listener only once
+          weekSelect.addEventListener('change', handleWeekChange);
+        } else {
+          weekSelect.innerHTML = '<option disabled>No forms created yet</option>';
+          document.getElementById('import-btn').disabled = true;
+        }
+      }
+      weekSelect.value = data.week;
+      
+      // --- 3. Populate New Members Section (Alert + Column) ---
+      const headerBlock = document.getElementById('header-block');
+      const newMemberAlert = document.getElementById('new-member-alert');
+      const newMemberColumn = document.getElementById('new-member-column');
+      
+      // Reset to default state first
+      headerBlock.classList.remove('new-member-alert-active');
+      newMemberAlert.classList.add('hidden');
+      newMemberColumn.classList.add('hidden');
+      alertHeight = 0;
+      if (data.newMembers && data.newMembers.length > 0) {
+        alertHeight = 141;
+        // If new members exist, apply the changes
+        document.getElementById('new-member-list').innerHTML = data.newMembers.map(id => `<li>${data.members[id]?.name || 'Unknown'}</li>`).join('');
+        
+        headerBlock.classList.add('new-member-alert-active'); // Change header color
+        newMemberAlert.classList.remove('hidden');           // Show the alert text
+        newMemberColumn.classList.remove('hidden');          // Show the new member column
+      }
+
+      // --- 4. Populate Panel Title ------
+      document.getElementById('panel-title').textContent = `Import Summary for Week ${data.week}`;
+
+      // --- 4.5 Populate Respondents vs. Non-Respondents ---
+      const respondentList = document.getElementById('respondent-list');
+      const nonRespondentList = document.getElementById('non-respondent-list');
+      
+      const newMemberIds = new Set(data.newMembers);
+      const respondentIds = new Set(data.respondentIds);
+      let respondentCount = 0;
+      let nonRespondentCount = 0;
+      // 1. Get all existing members who are NOT new
+      const existingMembers = data.allMemberIds.filter(id => !newMemberIds.has(id));
+      
+      // 2. Populate the respondent and non-respondent lists for existing members
+      existingMembers.forEach(id => {
+        const name = data.members[id]?.name || 'Unknown';
+        const li = document.createElement('li');
+        li.textContent = name;
+        if (respondentIds.has(id)) {
+          respondentCount++;
+          respondentList.appendChild(li);
+        } else {
+          nonRespondentCount++;
+          nonRespondentList.appendChild(li);
+        }
+      });
+      
+      // 3. If there are new members, add them to the bottom of the "Responded" list with highlighting.
+      if (newMemberIds.size > 0) {
+        // Add a separator if there were other respondents
+        // if (respondentList.children.length > 0) {
+        //   const separator = document.createElement('hr');
+        //   separator.style.borderTop = '1px solid #b7e1c7';
+        //   respondentList.appendChild(separator);
+        // }
+
+        data.newMembers.forEach(id => {
+            const name = data.members[id]?.name || 'Unknown';
+            const li = document.createElement('li');
+            li.textContent = name;
+            li.className = 'new-respondent'; // Apply the highlighting class
+            respondentList.appendChild(li);
+        });
+      }
+
+      // --- 5. Populate Options and Submit Logic ---
+      const optionsContainer = document.getElementById('options-container');
+      const gamePlanGames = data.gamePlanGames.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
+      const startedGames = new Set(data.startedGames);
+
+      pastGames = gamePlanGames.filter(g => startedGames.has(g));
+      futureGames = gamePlanGames.filter(g => !startedGames.has(g));
+      let optionsHtml = '';
+
+      if (data.offerPartialImport && pastGames.length > 0 && futureGames.length > 0) {
+        optionsHtml = `
+          <div class="slider-row">
+            <label class="switch">
+              <input type="checkbox" id="past-games-only" checked>
+              <span class="slider"></span>
+            </label>
+            <label for="past-games-only" class="slider-label">
+              <strong>&emsp;Only import picks for started games</strong>
+            </label>
+          </div>
+          <div class="details-text">
+            <strong>Started (${pastGames.length}):</strong> ${pastGames.join(', ') || 'None'}<br>
+            <strong>Upcoming (${futureGames.length}):</strong> ${futureGames.join(', ') || 'None'}
+          </div>
+        `;
+      } else {
+        optionsHtml = `<p>All ${gamePlanGames.length} available games for this week will be imported.</p>`;
+      }
+      optionsContainer.innerHTML = optionsHtml;
+
+      // Update height as-needed
+      const count = Math.max(data.newMembers.length,respondentCount,nonRespondentCount);
+      google.script.host.setHeight(Math.max(Math.min(alertHeight + height + count * 16,750),minHeight));
+
+      // --- 6. Final UI State ---
+      document.getElementById('import-content').classList.remove('hidden');
+      document.getElementById('import-btn').addEventListener('click', handleSubmit);
+      hideLoader();
+    }
+
+    /**
+     * Gathers the final state and shows a confirmation
+     * dialog if there are non-respondents.
+     */
+    function handleSubmit() {
+      // 1. Gather all the final data and user choices.
+      const selectedWeek = document.getElementById('week-select').value;
+      const importOnlyStartedCheckbox = document.getElementById('past-games-only');
+      const importOnlyStartedGames = importOnlyStartedCheckbox ? importOnlyStartedCheckbox.checked : false;
+      
+      const nonRespondentList = document.getElementById('non-respondent-list');
+      const hasNonRespondents = nonRespondentList.children.length > 0;
+
+      // 2. Decide whether to show the confirmation or proceed directly.
+      if (hasNonRespondents) {
+        showFinalConfirmation(selectedWeek, importOnlyStartedGames);
+      } else {
+        // No non-respondents, so we can proceed directly.
+        executeFinalImport(selectedWeek, importOnlyStartedGames);
+      }
+    }
+
+    /**
+     * Populates and displays the final confirmation dialog.
+     */
+    function showFinalConfirmation(week, importOnlyStarted) {
+      const dialog = document.getElementById('confirm-import-overlay');
+      const warningText = document.getElementById('confirm-warning-text');
+      const detailsList = document.getElementById('confirm-details-list');
+
+      // Customize the message based on the user's choice.
+      warningText.textContent = 'One or more members have not submitted their picks. Are you sure you want to import now?';
+      let importScope = importOnlyStarted
+        ? 'Picks for games that have already started.'
+        : 'Picks for ALL games this week.';
+        
+      detailsList.innerHTML = `<li><strong>Week:</strong> ${week}</li><li><strong>Scope:</strong> ${importScope}</li>`;
+
+      // Show the dialog
+      dialog.classList.remove('hidden');
+
+      // Add event listeners for the dialog buttons
+      document.getElementById('final-cancel-btn').onclick = () => {
+        dialog.classList.add('hidden');
+      };
+      document.getElementById('final-import-btn').onclick = () => {
+        dialog.classList.add('hidden');
+        executeFinalImport(week, importOnlyStarted);
+      };
+    }
+
+    /**
+     * The single function that calls the server to perform the import.
+     */
+    function executeFinalImport(week, importOnlyStartedGames) {
+      showLoader();
+      
+      google.script.run
+        .withSuccessHandler(response => {
+          hideLoader();
+          alert(response.message);
+          google.script.host.close();
+        })
+        .withFailureHandler(err => {
+          hideLoader();
+          alert('Error: ' + err.message);
+        })
+        .executePickImport(week, importOnlyStartedGames);
+    }
+
+    /**
+     * Handles the 'change' event of the week selector dropdown.
+     */
+    function handleWeekChange(e) {
+      const selectedWeek = e.target.value;
+      showLoader();
+      
+      // Re-call the main data fetching function, now with the newly selected week
+      google.script.run
+        .withSuccessHandler(buildImportPanel) // The same handler will rebuild the UI
+        .withFailureHandler(onLoadFailure)
+        .getFormImportData(selectedWeek);
+    }
+
+    function onLoadFailure(error) {
+      console.error('Error fetching form import panel data:', error);
+      alert('Could not load form import data. Please try again or get support if issue persists.');
+      hideLoader();
+    }
+  </script>
+</body>
+</html>
