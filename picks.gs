@@ -3430,6 +3430,7 @@ function createNewFormForWeek(gamePlan) {
   const forms = JSON.parse(docProps.getProperty(`forms`)) || {};
   const config = JSON.parse(docProps.getProperty('configuration'));
 
+  Logger.log(JSON.stringify(gamePlan));
   if (!gamePlan.hasOwnProperty('edits') || gamePlan?.edits) {
     try {
       updateScheduleData(ss, gamePlan);
@@ -3973,7 +3974,7 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     const mnf = evening && game.dayName === "Monday";
     let title = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}${game.divisonal == 1 ? ' ('+game.division+' Divsional Game)':''}`;
     let helpText = `${mnf ? 'Monday Night Football' : game.dayName} at ${formatTime(game.hour, game.minute)}`;
-    if (game.spread) helpText += `  |  Spread: ${game.spread}`;
+    if (config.pickemsAts && game.spread) helpText += `  |  Spread: ${game.spread}`;
     if (game.bonus > 1) title += ` (${game.bonus}x Bonus)`;
     if (config.tiebreakerInclude) {
       tiebreakerMatchup = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}`;
@@ -4252,7 +4253,7 @@ function updateScheduleData(ss,gamePlan) {
       // As requested, update the timestamp and auto-fetch status.
       data[rowIndex][timeFetchedCol] = new Date();
       if (autoFetchedCol > -1) {
-        data[rowIndex][autoFetchedCol] = false; // Mark as a manual entry/override
+        data[rowIndex][autoFetchedCol] = 0; // Mark as a manual entry/override
       }
       changesMade++;
     }
@@ -4262,6 +4263,7 @@ function updateScheduleData(ss,gamePlan) {
   if (changesMade > 0) {
     dataRange.setValues(data);
     Logger.log(`Successfully updated the Schedule sheet with ${changesMade} game overrides.`);
+    ss.toast(`Successfully updated the Schedule sheet with ${changesMade} game overrides.`,`📝 ${changesMade} SPREAD UPDATES`)
   }
 }
 
