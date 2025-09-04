@@ -1241,7 +1241,7 @@ function processMemberSubmission(clientData) {
       if (id.startsWith('new_')) {
         const permanentId = generateUniqueId();
         finalData.memberOrder.push(permanentId);
-        currentWeek = currentWeek || currentWeek() || 1;
+        currentWeek = currentWeek || fetchWeek() || 1;
         // --- [THE FIX] Call the new helper to create the member object ---
         finalData.members[permanentId] = createNewMember(
           memberDetails.name,
