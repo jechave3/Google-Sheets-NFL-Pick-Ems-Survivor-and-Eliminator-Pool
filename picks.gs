@@ -7405,7 +7405,7 @@ function allFormulasUpdate(ss){
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
   const memberData = JSON.parse(docProps.getProperty('members')) || {};
 
-  const totalMembers = memberData.memberOrder.length();
+  const totalMembers = memberData.memberOrder.length;
   let sheet, maxCols;
 
   const weeks = Array.from({ length: WEEKS }, (_, index) => index + 1).filter(week => !WEEKS_TO_EXCLUDE.includes(week));
