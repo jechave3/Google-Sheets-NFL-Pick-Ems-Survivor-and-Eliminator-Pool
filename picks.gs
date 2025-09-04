@@ -4647,8 +4647,7 @@ function updateOutcomeSheetVisibility(config) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
     if (!outcomesSheet) {
-      ss.toast(`OUTCOMES sheet not found. Cannot update column visibility.`,`❗ NO OUTCOMES SHEET FOUND`)
-      Logger.log("OUTCOMES sheet not found. Cannot update column visibility.");
+      Logger.log(`❗ NO OUTCOMES SHEET FOUND: Sheet not found. Cannot update column visibility.`);
       return; // Exit gracefully if the sheet doesn't exist.
     }
 
@@ -4662,7 +4661,7 @@ function updateOutcomeSheetVisibility(config) {
     // 4. Act only if the current state doesn't match the required state.
     if (isAnyAtsActive && !isCurrentlyVisible) {
       // ATS is ON, but columns are HIDDEN -> UNHIDE them.
-      ss.toast('Showing ATS Margin columns...',`✅ MARGIN COLUMNS VISIBLE`);
+      Logger.log(`✅ MARGIN COLUMNS VISIBLE: Showing ATS Margin columns...`);
       // Loop through all even columns and unhide them individually.
       // Unfortunately, Sheets API does not have an "unhideColumns" for multiple non-contiguous ranges.
       for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
@@ -4671,7 +4670,7 @@ function updateOutcomeSheetVisibility(config) {
       
     } else if (!isAnyAtsActive && isCurrentlyVisible) {
       // ATS is OFF, but columns are VISIBLE -> HIDE them.
-      ss.toast('Hiding ATS Margin columns...',`✅ MARGIN COLUMNS HIDDEN`);
+      Logger.log(`✅ MARGIN COLUMNS HIDDEN: Hiding ATS Margin columns...`);
       // It's more efficient to hide columns in batches if possible, but looping is reliable.
       for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
         outcomesSheet.hideColumns(i);
@@ -4679,9 +4678,8 @@ function updateOutcomeSheetVisibility(config) {
     }
     // If state is already correct (e.g., ATS is on and columns are visible), do nothing.
 
-  } catch (error) {
-    ss.toast(`Failed to adjust the column visibility of the ${LEAGUE}_OUTCOMES sheet`,`❗ ERROR HIDING COLUMNS`)
-    Logger.log("Error updating OUTCOMES sheet visibility: " + error.toString());
+  } catch (err) {
+    Logger.log(`❗ ERROR HIDING COLUMNS: Error updating OUTCOMES sheet visibility: ${err.stack}`);
   }
 }
 
