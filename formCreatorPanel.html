@@ -104,7 +104,8 @@
     let validitySummary = {};
     let LEAGUE_DATA = {};
     let editedSpreadData = {}; 
-    let edits = false;
+    let editedData = false;
+    let falseAlarm = false;
     let selectionState = {
       // Stores the checked state for each weekday, e.g., { "Thursday": true, "Friday": false }
       weekdays: {},
@@ -491,6 +492,9 @@
       if (!hasWarnedAboutOverride) {
         alert("⚠️ ALERT: You are about to manually override data. Your changes will be saved for this form.");
         hasWarnedAboutOverride = true; // Only show this alert once per session
+        falseAlarm = true;
+      } else {
+        if (falseAlarm) falseAlarm = false;
       }
 
       const currentText = cell.textContent;
@@ -510,7 +514,7 @@
           editedSpreadData[gameId] = {};
         }
         editedSpreadData[gameId][dataType] = newValue;
-        if (!editedData) editedData = true;
+        if (!editedData && !falseAlarm) editedData = true;
 
         // Revert the cell to text
         cell.innerHTML = newValue;
@@ -538,8 +542,6 @@
           editedSpreadData[gameId] = {};
         }
         editedSpreadData[gameId][dataType] = newValue;
-        
-        if (!editedData) editedData = true;
     }
     
     function handleInputChange(e) {
@@ -904,6 +906,7 @@
             minute: originalGame.minute,
             type: originalGame.type,
             divisional: originalGame.divisional,
+            division: originalGame.division,
             // User-defined overrides and selections
             spread: editedSpreadData[gameId]?.spread ?? originalGame.spread,
             overUnder: editedSpreadData[gameId]?.overUnder ?? originalGame.overUnder,
@@ -912,7 +915,7 @@
         }
       });
 
-      gamePlan.edits = edits;
+      gamePlan.edits = editedData;
       
       console.log("Submitting Game Plan:", gamePlan);
 
