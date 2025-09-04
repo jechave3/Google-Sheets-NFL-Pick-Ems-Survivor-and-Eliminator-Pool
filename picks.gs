@@ -1,3 +1,7 @@
+function viewMembers(){
+  SpreadsheetApp.getUi().alert(JSON.stringify(JSON.parse(PropertiesService.getDocumentProperties().getProperty('members'))));
+}
+
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
@@ -2928,12 +2932,12 @@ function setFormSubmitTrigger(formId, shouldBeEnabled) {
         .create();
       toastTitle = `✅ TRIGGER ADDED`;
       toastMessage = `Auto-sync trigger has been created for the form.`;
-      Logger.log(`Auto-sync trigger ENABLED for form ID: ${formId}`);
+      Logger.log(`✅ Auto-sync trigger ENABLED for form ID: ${formId}`);
     } else {
       // 2b. If disabling, we've already deleted the trigger.
       toastTitle = `❌ TRIGGER DELETED`;
       toastMessage = `Auto-sync trigger has been removed for the form.`;
-      Logger.log(`Auto-sync trigger DISABLED for form ID: ${formId}`);
+      Logger.log(`❌ Auto-sync trigger DISABLED for form ID: ${formId}`);
     }
 
     // 3. Store the preference (unchanged).
@@ -3430,7 +3434,6 @@ function createNewFormForWeek(gamePlan) {
   const forms = JSON.parse(docProps.getProperty(`forms`)) || {};
   const config = JSON.parse(docProps.getProperty('configuration'));
 
-  Logger.log(JSON.stringify(gamePlan));
   if (!gamePlan.hasOwnProperty('edits') || gamePlan?.edits) {
     try {
       updateScheduleData(ss, gamePlan);
@@ -3802,6 +3805,12 @@ function buildFormFromGamePlan(gamePlan) {
     // --- [THE NEW COMBINED LOGIC] ---
     const pageDestinations = {}; // Will map memberId -> destination page
     
+    // Report on members before diving in:
+    memberData.memberOrder.forEach(memberId => {
+      const member = memberData.members[memberId];
+      Logger.log(`🔹${member.name} Data\nSurvivor Lives: ${member.sL}\nEliminator Lives: ${member.eL}`);
+    });
+
     const survivorIsActive = !config.survivorDone && config.survivorInclude && week >= config.survivorStartWeek;
     const eliminatorIsActive = !config.eliminatorDone && config.eliminatorInclude && week >= config.eliminatorStartWeek;
 
@@ -3812,8 +3821,9 @@ function buildFormFromGamePlan(gamePlan) {
     // 1. First, find members active in BOTH contests and create their combined page.
     if (survivorIsActive && eliminatorIsActive) {
       ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
-      Logger.log('Creating possible destinations for instances where both Survivor and Eliminator are both active')
+      Logger.log('👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active')
       memberData.memberOrder.forEach(memberId => {
+        
         const member = memberData.members[memberId];
         if (member && member.active && member.sL[week-2] > 0 && member.eL[week-2] > 0) {
           let survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[week-2],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[week-2],sLS)} (${member.sL[week-2] < sLS ? member.sL[week-2] + ' remaining' : 'all remaining'})`;
@@ -3827,10 +3837,13 @@ function buildFormFromGamePlan(gamePlan) {
           addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
           
           pageDestinations[memberId] = combinedPage; // Assign their destination
+          Logger.log(`👑&💀 Questions for ${member.name} created.`);
         }
+        
       });
     }
     ss.toast(`Created questions for members who are in both survivor and eliminator for week ${week}`,`✅&✅ SURVIVOR/ELIMINATOR DONE`);
+    ss.toast(`✅&✅ Created questions for members who are in both survivor and eliminator for week ${week}`);
     // 2. Next, handle members active in ONLY ONE contest.
     
     let text = `questions for members who are in both survivor and eliminator for week ${week}`;
@@ -3849,30 +3862,34 @@ function buildFormFromGamePlan(gamePlan) {
       doneIcon = `✅`
     }
     ss.toast(`Creating ${text}`, `${icon} ${heading}`);
+    Logger.log(`${icon} Creating ${text}`);
     memberData.memberOrder.forEach(memberId => {
       // Skip members we've already handled
       if (pageDestinations[memberId]) return;
 
       const member = memberData.members[memberId];
       if (member && member.active) {
-        if (survivorIsActive && member.sL > 0) {
+        if (survivorIsActive && member.sL[week-2] > 0) {
           const helpText = `Survivor Lives: ${createLivesString(member.sL[week-2],sLS)} (${member.sL[week-2]})`;
           const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`).setHelpText(helpText);
           survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
           addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
           pageDestinations[memberId] = survivorPage;
-
-        } else if (eliminatorIsActive && member.eL > 0) {
+          Logger.log(`👑 Question for ${member.name} created.`);
+        } else if (eliminatorIsActive && member.eL[week-2] > 0) {
           const helpText = `Eliminator Lives: ${createLivesString(member.eL[week-2],eLS)} (${member.eL[week-2]})`;
           const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`).setHelpText(helpText);
           eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
           addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
           pageDestinations[memberId] = eliminatorPage;
+          Logger.log(`💀 Question for ${member.name} created.`);
+        } else {
+          Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
         }
       }
     });
     ss.toast(`Created ${text}`, `${doneIcon} ${heading}`);
-    Logger.log(`Created ${text}`);
+    Logger.log(`${doneIcon} Created ${text}`);
     
     // 3. Finally, build the name dropdown using our new destination map.
     Logger.log('Creating links to name drop-down based on members enrollment in Survivor and/or Eliminator pools')
@@ -3891,7 +3908,7 @@ function buildFormFromGamePlan(gamePlan) {
       }
     });
     ss.toast(`Linked all members to their respective pages for navigation`,`🔀 MEMBERS ROUTED`);
-    
+    Logger.log(`🔀 Linked all members to their respective pages for navigation`);
     // Add 'New User' option if applicable
     if (!config.membershipLocked) {
       const text = 'Membership is unlocked--creating a new user question';
@@ -3907,7 +3924,7 @@ function buildFormFromGamePlan(gamePlan) {
     
     Logger.log('📝 Setting Name Choices');
     nameQuestion.setChoices(nameChoices);
-    ss.toast('Setting all choices for name question drop-down','📝 NAME CHOICES SET');
+    ss.toast('Set all choices for name question drop-down','📝 NAME CHOICES SET');
 
     // --- Final Touches ---
     Logger.log('↩️ Returning information to form creation controller...');
@@ -3967,7 +3984,7 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
  * Builds all Pick'em related questions on the form.
  */
 function buildPickemQuestions(ss, form, gamePlan, config) {
-  Logger.log("Building Pick'em questions...");
+  Logger.log("🏈 Building Pick'em questions...");
   gamePlan.games.forEach(game => {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
@@ -3988,6 +4005,7 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
       .showOtherOption(false)
       .setRequired(true);
     ss.toast(`Added pick 'ems question of ${tiebreakerMatchup}`,`${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot}`);
+    Logger.log(`🏈 Pick 'Ems: ${LEAGUE_DATA[game.awayTeam].mascot}@${LEAGUE_DATA[game.homeTeam].mascot} created`);
   });
   if (config.tiebreakerInclude) { // Excludes tiebreaker question if tiebreaker is disabled
     let numberValidation = FormApp.createTextValidation()
@@ -4003,12 +4021,14 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
       .setRequired(true)
       .setValidation(numberValidation);
     ss.toast(`Created tiebreaker question for ${tiebreakerMatchup}`,`⚖️ TIEBREAKER CREATED`);
+    Logger.log(`⚖️ Tiebreaker question created for ${tiebreakerMatchup}`);
   }
   if(!config.commentsExclude) { // Excludes comment question if comments are disabled
     form.addTextItem()
       .setTitle('Comments')
       .setHelpText('Passing thoughts...');
     ss.toast(`Added comment box for pick 'ems`,`✍ COMMENT BOX CREATED`);
+    Logger.log(`✍ Comments field added for pick 'ems`);
   }
 }
 
