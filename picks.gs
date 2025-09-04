@@ -3815,8 +3815,6 @@ function buildFormFromGamePlan(gamePlan) {
     
     const survivorIsActive = !config.survivorDone && config.survivorInclude && week >= config.survivorStartWeek;
     const eliminatorIsActive = !config.eliminatorDone && config.eliminatorInclude && week >= config.eliminatorStartWeek;
-    
-    week = parseInt(gamePlan.week, 10);
     const sStartWeek = parseInt(config.survivorStartWeek, 10);
     const eStartWeek = parseInt(config.eliminatorStartWeek, 10);
 
@@ -3836,41 +3834,40 @@ function buildFormFromGamePlan(gamePlan) {
 
     // B. Handle Subsequent Weeks (Individual Pages)
     if (week > 1 && (survivorIsActive || eliminatorIsActive)) {
-      let allSurvivorTeamsForWeek = survivorIsActive ? buildTeamList(gamePlan, config, config.survivorAts) : [];
-      let allEliminatorTeamsForWeek = eliminatorIsActive ? buildTeamList(gamePlan, config, config.eliminatorAts) : [];
+        let allSurvivorTeamsForWeek = survivorIsActive ? buildTeamList(gamePlan, config, config.survivorAts) : [];
+        let allEliminatorTeamsForWeek = eliminatorIsActive ? buildTeamList(gamePlan, config, config.eliminatorAts) : [];
 
-      memberData.memberOrder.forEach(memberId => {
-        const member = memberData.members[memberId];
+        memberData.memberOrder.forEach(memberId => {
+            const member = memberData.members[memberId];
 
-        // --- [THE DEFINITIVE FIX] ---
-        // This eligibility check works for BOTH old (number) and new (array) data formats.
-        const isEligibleForSurvivor = survivorIsActive && isMemberEligible(member, 'survivor', week);
-        const isEligibleForEliminator = eliminatorIsActive && isMemberEligible(member, 'eliminator', week);
-          
-        if (isEligibleForSurvivor && isEligibleForEliminator) {
-          // ... Your correct logic to create a combined page ...
-          const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Contest Picks`);
-          combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
-          addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
-          pageDestinations[memberId] = combinedPage;
-        } else if (isEligibleForSurvivor) {
-          // ... Your correct logic to create a survivor-only page ...
-          const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`);
-          survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
-          pageDestinations[memberId] = survivorPage;
-        } else if (isEligibleForEliminator) {
-          // ... Your correct logic to create an eliminator-only page ...
-          const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`);
-          eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
-          pageDestinations[memberId] = eliminatorPage;
-        }
-      });
+            // --- [THE DEFINITIVE FIX] ---
+            // This eligibility check works for BOTH old (number) and new (array) data formats.
+            const isEligibleForSurvivor = survivorIsActive && isMemberEligible(member, 'survivor', week);
+            const isEligibleForEliminator = eliminatorIsActive && isMemberEligible(member, 'eliminator', week);
+            
+            if (isEligibleForSurvivor && isEligibleForEliminator) {
+                // ... Your correct logic to create a combined page ...
+                const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Contest Picks`);
+                combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
+                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
+                pageDestinations[memberId] = combinedPage;
+            } else if (isEligibleForSurvivor) {
+                // ... Your correct logic to create a survivor-only page ...
+                const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`);
+                survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
+                pageDestinations[memberId] = survivorPage;
+            } else if (isEligibleForEliminator) {
+                // ... Your correct logic to create an eliminator-only page ...
+                const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`);
+                eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
+                pageDestinations[memberId] = eliminatorPage;
+            }
+        });
     }
     
-
     // --- 3. Build the Name Dropdown (with corrected logic) ---
     Logger.log('Creating links for name drop-down...');
     let nameChoices = [];
@@ -3879,23 +3876,22 @@ function buildFormFromGamePlan(gamePlan) {
     memberData.memberOrder.forEach(memberId => {
       const member = memberData.members[memberId];
       if (member && member.active) {
-        let destination = finalSubmitPage; // Default destination
+        let destination = finalSubmitPage;
         let isEligible = false;
 
-        const isEligibleForSurvivor = survivorIsActive && isMemberEligible(member, 'survivor', week, config);
-        const isEligibleForEliminator = eliminatorIsActive && isMemberEligible(member, 'eliminator', week, config);
-
-        if (isEligibleForSurvivor || isEligibleForEliminator) {
-          isEligible = true;
-          // Determine if we need an individual page or the common first week page
-          if (week === sStartWeek || week === eStartWeek) {
-            destination = firstWeekContestPage;
-          } else {
-            destination = pageDestinations[memberId] || finalSubmitPage; // Fallback for members in only one contest
+        if (week === sStartWeek || week === eStartWeek) {
+          // It's the first week of a contest, everyone active is eligible.
+          isEligible = (survivorIsActive && week === sStartWeek) || (eliminatorIsActive && week === eStartWeek);
+          if (isEligible) destination = firstWeekContestPage;
+        } else {
+          // For later weeks, eligibility is determined by having a custom page.
+          if (pageDestinations[memberId]) {
+            isEligible = true;
+            destination = pageDestinations[memberId];
           }
         }
 
-        // Add the member to the dropdown if they are eligible for ANY game type.
+        // Add the member to the dropdown if they are eligible for any game.
         if (isEligible || config.pickemsInclude) {
           nameChoices.push(nameQuestion.createChoice(member.name, destination));
           eligibleMembers.push(member.name);
