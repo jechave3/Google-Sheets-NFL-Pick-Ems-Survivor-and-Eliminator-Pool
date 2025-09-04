@@ -1,7 +1,7 @@
-/** GOOGLE SHEETS FOOTBALL PICK 'EMS & SURVIVOR
+/** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR | 2025 Version
  * Script Library for League Creator & Management Platform
  * v3.0
- * 09/03/2025
+ * 09/04/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -84,6 +84,7 @@ function onOpen() {
       }
     }
     if (true) {
+
       menu.addSeparator()
         .addItem('Check Configuration','checkDocumentConfiguration')
         .addItem('Check Members','checkDocumentMembers')
@@ -95,12 +96,54 @@ function onOpen() {
       .addToUi();
 
   } else {
+    const ui = fetchUi();
+    if (!docProps.getProperty('tz')){
+      ui.alert('WELCOME\r\n\r\nThanks for checking out this Pick \'Ems/Survivor/Eliminator script. \r\n\r\nBefore you get started, you\'ll need to allow the scripts to run and also check that your time zone is set correctly.', ui.ButtonSet.OK);
+      timezoneCheck(ui,docProps);
+    } else {
+      ui.alert('WELCOME\r\n\r\nThanks for checking out this Pick \'Ems/Survivor/Eliminator script. \r\n\r\nBefore you get started, you\'ll need to allow the scripts to run if not already authorized and initialize the sheet.\r\n\r\nRun the \'Initialize\' script from the \'Picks\' menu along the top bar. .', ui.ButtonSet.OK);
+    }
+    ui.alert('Next, run the \'Initialize\' script from the \'Picks\' menu along the top bar.', ui.ButtonSet.OK);
+    initializeMenu(init);
     SpreadsheetApp.getUi()
       .createMenu('Picks')
       .addItem('Initialize', 'launchConfiguration')
       .addToUi();
   }
 }
+
+
+//------------------------------------------------------------------------
+// CHECKS IF TZ PROP SET AND PROMPTS IF NOT
+function timezoneCheck(ui,docProps,lost) {
+  if (docProps == undefined) {
+    docProps = PropertiesService.getDocumentProperties();
+  }
+  ui = fetchUi(ui);
+  const tzProp = docProps.getProperty('tz');
+  const tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+
+  // Confirm timezone setting before continuing
+  if (tzProp == null) {
+    let text = 'TIMEZONE\r\n\r\nThe timezone you\'re currently using is ' + tz + '. Is this correct?';
+    if (lost) {
+      text = 'TIMEZONE VALUE NOT SET\r\n\r\nDespite initialization, it seems like the timezone variable property isn\'t set. The one your account is set to is ' + tz + '. Is this correct?';
+    }
+    let timeZonePrompt = ui.alert(text, ui.ButtonSet.YES_NO);
+    if ( timeZonePrompt != 'YES') {
+      ui.alert('FIX TIMEZONE\r\n\r\nFollow these steps to change your projects time zone:\r\n\r\n1\. Go to the \'Extensions\' > \'Apps Script\' menu\r\n2\. Select the gear icon on the left menu\r\n3\. Use the drop-down to select the correct timezone\r\n4\. Close the \'Apps Script\' editor and return to the sheet\r\n5\. Restart the script through the \'Picks\' menu', ui.ButtonSet.OK);
+      return false;
+    } else if ( timeZonePrompt == 'YES') {
+      docProps.setProperty('tz',tz);
+      return true;
+    }
+  } else {
+    return true;
+  }
+}
+
+
+
 
 // ============================================================================================================================================
 // GLOBAL VARIABLES
