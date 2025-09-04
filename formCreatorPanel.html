@@ -104,7 +104,7 @@
     let validitySummary = {};
     let LEAGUE_DATA = {};
     let editedSpreadData = {}; 
-    let editedData = false;
+    let edits = false;
     let selectionState = {
       // Stores the checked state for each weekday, e.g., { "Thursday": true, "Friday": false }
       weekdays: {},
@@ -510,7 +510,7 @@
           editedSpreadData[gameId] = {};
         }
         editedSpreadData[gameId][dataType] = newValue;
-        if (!editedData) editedData = true;
+        edits = true;
 
         // Revert the cell to text
         cell.innerHTML = newValue;
@@ -538,6 +538,8 @@
           editedSpreadData[gameId] = {};
         }
         editedSpreadData[gameId][dataType] = newValue;
+        
+        if (!editedData) editedData = true;
     }
     
     function handleInputChange(e) {
@@ -806,7 +808,7 @@
             const currentMultiplier = bonusMultiplierState[gameId] || 1;
             row.classList.toggle('bonus-2x', currentMultiplier === 2);
             row.classList.toggle('bonus-3x', currentMultiplier === 3);
-          }
+        }
         }
       
       const inputs = row.querySelectorAll('input.live-input, td.editable-cell > input');
@@ -909,7 +911,7 @@
         }
       });
 
-      gamePlan.edits = editedData;
+      gamePlan.edits = edits;
       
       console.log("Submitting Game Plan:", gamePlan);
 
