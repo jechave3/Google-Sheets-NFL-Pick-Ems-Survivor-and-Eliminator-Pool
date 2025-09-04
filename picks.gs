@@ -736,8 +736,10 @@ function processConfigurationSubmission(formObject) {
     }
 
     if (!configToSave.year) configToSave.year = fetchYear();
-    if (!configToSave.initialized) configToSave.initialized = false;
-    updateOutcomeSheetVisibility(configToSave);
+    if (!configToSave.hasOwnProperty('initialized')) configToSave.initialized = false;
+    if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName(`${LEAGUE}_OUTCOMES`)) {
+      updateOutcomeSheetVisibility(configToSave);
+    }
     saveProperties('configuration', configToSave);
 
     if (removeNewUserEntry) {
@@ -1774,9 +1776,9 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   if (currentWeek == undefined || currentWeek == null) {
     currentWeek = fetchWeek(null,true);
     all = true;
-    ss.toast('Fetching complete schedule data');
+    ss.toast(`Fetching complete schedule data for the ${LEAGUE}`,`📅 FETCHING SCHEDULE`);
   } else {
-    ss.toast(`Fetching only data for week ${currentWeek}, if available.`);
+    ss.toast(`Fetching only data for week ${currentWeek}, if available.`,`📅 FETCHING WEEK ${currentWeek}`);
   }
   // Declaration of script variables
   if (year == undefined || year == null) {
@@ -1947,6 +1949,7 @@ function fetchSchedule(ss,year,currentWeek,auto,overwrite) {
   // Sheet formatting & Range Setting =========================
   sheet = ss.getActiveSheet();
   if ( sheet.getSheetName() == 'Sheet1' && ss.getSheetByName(sheetName) == null) {
+    sheet.clear();
     sheet.setName(sheetName);
   }
   sheet = ss.getSheetByName(sheetName);  
@@ -3429,7 +3432,7 @@ function createNewFormForWeek(gamePlan) {
 
   if (!gamePlan.hasOwnProperty('edits') || gamePlan?.edits) {
     try {
-      updateScheduleData(gamePlan);
+      updateScheduleData(ss, gamePlan);
       ss.toast(`Placed your modified spread data if present for week ${week}.`,`📋 UPDATED SPREAD DATA`)
     } catch (err) {
       Logger.log(`Issue passing the new spread data to the ${LEAGUE} sheet, moving on (these spreads are saved with the 'forms' variable).`)
@@ -6892,7 +6895,7 @@ function survElimSheet(ss,config,memberData,sheetType) {
   ss.setNamedRange(`${sheetName}_ELIMINATED`,sheet.getRange(2,4,totalMembers,1))
   ss.setNamedRange(`${sheetName}_PICKS`,sheet.getRange(2,5,totalMembers,weeks.length));
 
-  if (config[`${sheetType}Lives`] == 1) sheet.hideColumns(livesCol);
+  // if (config[`${sheetType}Lives`] == 1) sheet.hideColumns(livesCol);
   if (!config[`${sheetType}Revives`]) sheet.hideColumns(revivesCol);
 
   if (!fresh) {
