@@ -97,7 +97,6 @@ function onOpen() {
       ui.alert('WELCOME\r\n\r\nThanks for checking out this Pick \'Ems/Survivor/Eliminator script. \r\n\r\nBefore you get started, you\'ll need to allow the scripts to run if not already authorized and initialize the sheet.\r\n\r\nRun the \'Initialize\' script from the \'Picks\' menu along the top bar. .', ui.ButtonSet.OK);
     }
     ui.alert('Next, run the \'Initialize\' script from the \'Picks\' menu along the top bar.', ui.ButtonSet.OK);
-    initializeMenu(init);
     SpreadsheetApp.getUi()
       .createMenu('Picks')
       .addItem('Initialize', 'launchConfiguration')
@@ -575,10 +574,10 @@ function showAuthorizationCard() {
       </head>
       <body>
         <h2>Welcome to NFL Picks!</h2>
-        <p>Before you can get started, the scripts need your permission to run.</p>
+        <p>Before you can get started, the scripts needed your permission to run.</p>
         
         <div class="permissions">
-          <strong>Why does it need these permissions?</strong>
+          <strong>Why did you need to grant these permissions?</strong>
           <ul>
             <li><strong>View and manage Sheets:</strong> To create and update this Sheet.</li>
             <li><strong>View and manager Drive:</strong> To create and update your weekly picks Forms.</li>
@@ -586,13 +585,12 @@ function showAuthorizationCard() {
           </ul>
         </div>
 
-        <p style="margin-bottom: 0;">Feel free to review the code within the "Extensions" > "Apps Script" menu beforehand, but otherwise click below to start the standard Google authorization process to set up your pool.</p>
+        <p style="margin-bottom: 0;">Feel free to review the code within the "Extensions" > "Apps Script". You should be all set to create your pool now. Thanks for checking out this tool and please be patient as improvements and fixes are made.</p>
 
         <button class="btn" style="margin-top: 4px; padding: 10px 16px;" onclick="authorizeScript()">Let's Go!</button>
 
         <script>
           function authorizeScript() {
-            // This button calls the server function that will trigger the auth prompt.
             google.script.run
               .withSuccessHandler(onAuthorizationSuccess)
               .withFailureHandler(onAuthorizationFailure)
@@ -1069,16 +1067,6 @@ function setupSheets() {
     // Creates Summary Record Sheet
     summarySheet(ss,memberData,config);
     Logger.log('Deployed Summary sheet');
-
-    if (config.pickemsInclude) {    
-      // Creates Weekly Sheets for the Current Week
-      let weekly = weeklySheet(ss,week,config,memberData,false);
-      Logger.log(`Deployed Weekly sheet for week ${week}`);
-
-
-      ss.toast(`Deployed Weekly sheet for week ${week}`);
-      weekly.activate();
-    }
 
     ss.getSheetByName(LEAGUE).hideSheet();
 
@@ -2391,7 +2379,7 @@ function recordWeeklyScores(){
           const text = '❗ Issue with fetching weekly sheet or named ranges on weekly sheet, recreating now.';
           Logger.log(text + ' | ERROR: ' + err.stack);
           ss.toast(text,'MISSING WK' + week + ' SHEET');
-          weeklySheet(ss,week,config,members,false);
+          weeklySheet(ss,week,config,null,memberData,true);
         }
         let regex = new RegExp('[A-Z]{2,3}','g');
         let arr = [];
@@ -8061,7 +8049,7 @@ function bonusRandomGameSet() {
     Logger.log('No sheet for week ' + week);
     let prompt = ui.alert('NO SHEET\r\n\r\nThe week ' + week + ' sheet does not exist. Create a sheet now for week ' + week + '?\r\n\r\n(Selecting \'Cancel\' will exit and no game will be selected)', ui.ButtonSet.OK_CANCEL);
     if (prompt == ui.Button.OK) {
-      sheet = weeklySheet(ss,week,config,members,false);
+      sheet = weeklySheet(ss,week,config,null,members,true);
       sheetExisted = false;
     } else {
       throw new Error('Exited when new sheet creation was declined');
@@ -8074,7 +8062,7 @@ function bonusRandomGameSet() {
     Logger.log('No \'BONUS\' named range for week ' + week);
     ui.alert('NO BONUS\r\n\r\nThe week ' + week + ' sheet lacks the bonus game feature. Would you like to recreate the week ' + week + ' sheet now?\r\n\r\n(Selecting \'Cancel\' will exit and no game will be selected)', ui.ButtonSet.OK_CANCEL);
     if (prompt == ui.Button.OK) {
-      sheet = weeklySheet(ss,week,config,members,false);
+      sheet = weeklySheet(ss,week,config,null,members,true);
       sheetExisted = false;
     } else {
       throw new Error('Exited when new sheet creation was declined');
