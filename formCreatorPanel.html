@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    /* Using styles consistent with your other panels */
+    body { font-family: 'Montserrat', Arial, sans-serif; padding: 20px; }
+    h2 { color: #013369; margin-top: 0; }
+    p { font-size: 14px; color: #333; line-height: 1.6; }
+    label { font-weight: 500; }
+    select { width: 100px; padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+    .warning { background-color: #fff0f0; border: 1px solid #ffdddd; padding: 15px; border-radius: 8px; margin-top: 20px; }
+    .warning strong { color: #D50A0A; }
+    .button-row { display: flex; gap: 8px; padding: 12px 8px; }
+    .btn { flex: 1; padding: 8px 14px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 600; }
+    .btn-primary { background-color: #013369; color: white; }
+    .btn-primary:hover { background-color: #2067b3; }
+    .btn-secondary { background-color: #D50A0A; color: white; }
+    .btn-secondary:hover { background-color: #ff3d3d; }
+    .btn-alert { padding: 3px; font-size: 12px; background-color: #ff913d; color: #ffecde; }
+    .btn-alert:hover { background-color: #e86705; }
+    #matchup-checklist { margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+    .matchup-row { display: flex; align-items: center; padding: 5px; border-radius: 4px; }
+    .matchup-row:nth-child(odd) { background-color: #f8f9fa; }
+    .matchup-row input { margin-right: 10px; }
+    .matchup-info { flex: 1; font-size: 13px; }
+    .matchup-details { font-size: 11px; color: #555; margin-left: auto; }
+    .switch { position: relative; display: inline-block; width: 36px; height: 20px; transform: scale(0.8); }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch-small { transform: scale(0.8); }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #999; transition: 0.3s; border-radius: 10px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: 0.3s; border-radius: 50%; }
+    input:checked+.slider { background-color: #D50A0A; }
+    input:checked+.slider:before { transform: translateX(16px); }
+    .deselected-row td { color: #999 !important; }
+    .deselected-row .team-cell { background-color: #aaa !important; color: #fff !important; border: 1px solid #999; }
+    .deselected-row td { color: #999 !important; }
+    .deselected-row .team-cell-away { background-color: #aaa !important; color: #fff !important; border: 1px solid #999; }
+    .deselected-row .team-cell-home { background-color: #eee !important; color: #aaa !important; border: 1px solid #ccc; }
+    #data-status-message { padding: 10px; margin-top: 15px; border-radius: 4px; font-size: 13px; font-weight: 600; text-align: center; }
+    #data-status-message.collapsed { height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; border: none; }
+    .status-fresh { background-color: #ecfae7; color: #196901; }
+    .status-issue { background-color: #ffecde; color: #ff913d; }
+    .status-warn { background-color: #fafae7; color: #595601; }
+    .status-stale { background-color: #fff0f0; color: #D50A0A; }
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; }
+    .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #013369; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+    #matchup-table-container { margin-top: 20px; overflow-y: auto; border: 1px solid #ccc; transition: height 0.3s ease; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px; text-align: left; font-size: 12px; border-bottom: 1px solid #ddd; }
+    th { background-color: #f2f2f2; font-weight: 600; }
+    .weekday-header { background-color: #013369; color: white; font-weight: 700; }
+    .weekday-header td { padding-top: 10px; padding-bottom: 10px; }
+    tr.disabled td { color: #aaa; background-color: #fafafa; }
+    .center-align { text-align: center; }
+    .team-cell { font-weight: bold; border-radius: 4px; padding: 4px 6px !important; text-align: center; color: white; }
+    .editable-cell { cursor: pointer; position: relative; padding-left: 24px !important; }
+    .editable-cell:hover::after { content: '✎';  position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: #013369; font-weight: bold; }
+    .live-input { width: 60px; border: 1px solid #ccc; border-radius: 4px; padding: 4px; font-size: 12px; }
+    .invalid-input { border: 2px solid #ff913d !important; background-color: #ffecde; }
+    .validation-tooltip { position: relative; }
+    .validation-tooltip .tooltip-text { visibility: hidden; width: 180px; background-color: #D50A0A; color: #fff; text-align: center; border-radius: 6px; padding: 5px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -90px; opacity: 0; transition: opacity 0.3s; }
+    .validation-tooltip:hover .tooltip-text { visibility: visible; opacity: 1; }
+    .bonus-cell { text-align: center; }
+    .bonus-button { background-color: #ccc; color: #222; border: 1px solid #ccc; border-radius: 5px; font-weight: bold; font-size: 12px; cursor: pointer; width: 45px; padding: 4px 0; transition: background-color 0.2s ease; }
+    .bonus-button:hover { border-color: #999; }
+    .deselected-row .bonus-button { background-color: #f0f0f0; color: #bbb; border-color: #ddd; cursor: not-allowed; }
+    .deselected-row .bonus-button:hover { border-color: #ddd; }    
+    tr.bonus-2x { background-color: #fcefc7 !important; }
+    tr.bonus-3x { background-color: #fce392 !important; }
+  </style>
+</head>
+<body>
+  <div id="loading-overlay" class="hidden">
+    <div class="spinner"></div>
+  </div>
+  <div id="form-container" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <label for="week-select">Select Week:</label>
+      <select id="week-select"></select>
+    </div>
+    <div id="mode-selector">Select:
+      <input type="radio" id="modeAll" name="selectionMode" value="all" checked onchange="renderTable()"> <label for="modeAll">All</label>
+      <input type="radio" id="modeWeekday" name="selectionMode" value="weekday" onchange="renderTable()"> <label for="modeWeekday">By Day</label>
+      <input type="radio" id="modeMatchup" name="selectionMode" value="matchup" onchange="renderTable()"> <label for="modeMatchup">By Matchup</label>
+    </div>
+  </div>
+  <div id="data-status-message"></div>
+  
+  <div id="matchup-table-container"></div>
+
+  <div class="button-row">
+    <button type="button" class="btn btn-secondary" onclick="google.script.host.close()">Cancel</button>
+    <button type="button" class="btn btn-primary" onclick="handleSubmit()">Create Form</button>
+  </div>
+
+  <script>
+    let hasWarnedAboutOverride = false;
+    let apiWeek = null;
+    let allMatchups = [];
+    let config = {};
+    let validitySummary = {};
+    let LEAGUE_DATA = {};
+    let editedSpreadData = {}; 
+    let selectionState = {
+      // Stores the checked state for each weekday, e.g., { "Thursday": true, "Friday": false }
+      weekdays: {},
+      // Stores the checked state for each matchup (using a unique game ID), e.g., { "ARI@LAR": true }
+      matchups: {}
+    };
+    let showSpreads, showOverUnder, bonusMultiplierState = {};
+    const loader = document.getElementById('loading-overlay');
+    function showLoader() {
+      if (loader) {
+        loader.classList.remove('hidden');
+      }
+    }
+    function hideLoader() {
+      if (loader) {
+        loader.classList.add('hidden');
+      }
+      
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      showLoader();
+      const container = document.getElementById('matchup-table-container');
+      container.addEventListener('click', handleCellClick);
+      // Use 'blur' (when focus leaves) and 'input' for real-time validation
+      container.addEventListener('blur', handleInputChange, true); // Use capture phase for blur
+      container.addEventListener('input', handleInputChange);
+      container.addEventListener('click', handleBonusClick);
+      google.script.run
+        .withSuccessHandler(applyInitialData)
+        .withFailureHandler(onDataFetchFailure)
+        .fetchFormCreationData();
+    });
+
+    function applyInitialData(data) {
+      config = data.configuration;
+      showSpreads = (config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts);
+      showOverUnder = showSpreads || (config.tiebreakerInclude && config.overUnderInclude);
+      allMatchups = data.matchupData.available ? data.matchupData.matchups : [];
+      validitySummary = data.validitySummary || {};
+      apiWeek = data.apiWeek;
+      LEAGUE_DATA = data.leagueData || {};
+      selectionState.weekdays = {};
+      selectionState.matchups = {};
+      bonusMultiplierState = {};
+      const allDays = ["Wednesday", "Thursday", "Friday", "Saturday", "Sunday", "Monday"];
+      allDays.forEach(day => selectionState.weekdays[day] = true);
+      allMatchups.forEach(game => {
+        const gameId = `${game.awayTeam}@${game.homeTeam}`;
+        if (config.mnfDouble && (game.dayName === 'Monday' || game.day === 1)) {
+          bonusMultiplierState[gameId] = 2;
+        } else {
+          bonusMultiplierState[gameId] = 1;
+        }
+        selectionState.matchups[gameId] = true; 
+      });
+      if (config.hasOwnProperty("matchupCustomization")) {
+        if (config.matchupCustomization.hasOwnProperty("days")) {
+          if (Object.keys(config.matchupCustomization.days).length > 0) {
+            const savedDays = config.matchupCustomization.days;
+            const dayMap = { "includeWed": "Wednesday", "includeThu": "Thursday", "includeFri": "Friday", "includeSat": "Saturday", "includeSun": "Sunday", "includeMon": "Monday" };
+            for (const key in savedDays) {
+                if (dayMap[key]) {
+                    selectionState.weekdays[dayMap[key]] = savedDays[key];
+                }
+            }
+          }
+        }
+      }
+
+      const weekSelect = document.getElementById('week-select');
+      weekSelect.addEventListener('change', updateDisplayForWeek);
+      const uniqueWeeks = [...new Set(allMatchups.map(m => m.week))].sort((a, b) => a - b);
+      
+      uniqueWeeks.forEach(weekNum => {
+        const option = document.createElement('option');
+        option.value = weekNum;
+        option.textContent = `Week ${weekNum}`;
+        weekSelect.appendChild(option);
+      });
+      
+      weekSelect.addEventListener('change', renderTable);
+      
+      // Set initial radio button state based on saved config
+      if (!config.customizeMatchups) {
+        document.getElementById('modeAll').checked = true;
+      } else if (config.matchupCustomization && config.matchupCustomization.mode === 'weekday') {
+        document.getElementById('modeWeekday').checked = true;
+      } else if (config.matchupCustomization && config.matchupCustomization.mode === 'matchup') {
+        document.getElementById('modeMatchup').checked = true;
+      }
+
+      // Initial render
+      updateDisplayForWeek();
+      hideLoader();
+    }
+
+    function updateDisplayForWeek() {
+        bonusMultiplierState = {};
+        const selectedWeek = document.getElementById('week-select').value;
+        renderStatusMessage(selectedWeek);
+        renderTable(selectedWeek);
+        // Dynamic height adjustment should happen after rendering
+        adjustDialogHeight(selectedWeek);
+    }
+
+    function renderStatusMessage(week) {
+      const selectionMode = document.querySelector('input[name="selectionMode"]:checked').value;
+      const statusMessageDiv = document.getElementById('data-status-message');
+      const weekMatchups = allMatchups.filter(m => m.week == week);
+      
+      const isRelevant = showSpreads || showOverUnder;
+
+      // Use classList.toggle for a clean way to show/hide the element.
+      statusMessageDiv.classList.toggle('collapsed', !isRelevant);
+
+      // If it's not relevant, we don't need to do any more work.
+      if (!isRelevant) {
+          return;
+      }
+
+      // Check for data completeness
+      let allSpreadsFilled = true;
+      let allOverUndersFilled = true;
+      
+      weekMatchups.forEach(game => {
+          const gameId = `${game.awayTeam}@${game.homeTeam}`;
+          const spread = editedSpreadData[gameId]?.spread ?? game.spread;
+          const overUnder = editedSpreadData[gameId]?.overUnder ?? game.overUnder;
+          if (selectionMode === 'matchup' && selectionState.matchups[gameId]) {
+            if (!spread || spread === 'N/A') allSpreadsFilled = false;
+            if (!overUnder || overUnder === 'N/A') allOverUndersFilled = false;
+          } else if (selectionMode === 'weekday' && selectionState.weekdays[game.day]) {
+            if (!spread || spread === 'N/A') allSpreadsFilled = false;
+            if (!overUnder || overUnder === 'N/A') allOverUndersFilled = false;
+          }
+      });
+
+      const weekValidity = validitySummary[week];
+      let addedSpreadRefreshButton = false;
+
+      if (!weekValidity) {
+        statusMessageDiv.innerHTML = '';
+        statusMessageDiv.className = '';
+        return;
+      }
+
+      const timeFetched = new Date(weekValidity.timeFetched);
+      const now = new Date();
+      const hoursAgo = (now - timeFetched) / (3600 * 1000);
+      const dateStr = timeFetched.toLocaleDateString();
+      const timeStr = timeFetched.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      let message = '';
+      let statusClass = 'status-fresh';        
+      if (weekValidity.timeFetched === 'ERROR') {
+        message = `❌ <strong>ERROR</strong>: Inconsistent data fetch times detected for this week.`;
+        statusClass = 'status-stale';
+      } else if (!weekValidity.spreads && (config.pickemsAts || config.survivorAts)) {
+        message = `✏️ <strong>ISSUE</strong>: Spreads are missing for one or more games this week.`;
+        statusClass = 'status-issue';
+      } else if (hoursAgo > 24) {
+        message = `⚠️ ${weekValidity.auto ? 'Automatic s' : 'S'}pread data from ${dateStr} at ${timeStr} (over ${hoursAgo > 48 ? Math.floor(hoursAgo/24) + ' days' : Math.floor(hoursAgo) + ' hours'} ago). `;
+        if (week == apiWeek) {
+          message += `  <button type="button" class="btn btn-alert" id="fetch-spreads-btn">Update Now</button>`;
+          addedSpreadRefreshButton = true;
+        }
+        statusClass = 'status-warn';
+      } else if (showSpreads || showOverUnder) {
+        message = `✅ Spread data complete!`;
+        if (weekValidity.auto) message += ` (automatically captured on ${dateStr} at ${timeStr})`;
+      }
+      statusMessageDiv.innerHTML = message;
+      statusMessageDiv.className = statusClass;
+      if (addedSpreadRefreshButton) document.getElementById('fetch-spreads-btn').addEventListener('click', handleFetchSpreadsClick);
+    }
+
+    function formatTime(hour, minute) {
+        // [THE FIX] Check for invalid data at the beginning.
+        if (hour === null || hour === '' || isNaN(hour) || minute === null || isNaN(minute)) {
+            return 'TBD'; // Return a safe default
+        }
+        const h = parseInt(hour, 10);
+        const m = String(minute).padStart(2, '0');
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const formattedHour = h % 12 || 12; // Convert 0 to 12 for 12 AM
+        return `${formattedHour}:${m} ${ampm}`;
+    }
+
+    function renderTable() {
+      scrubInvalidatedData();
+
+      const selectedWeek = document.getElementById('week-select').value;
+      const selectionMode = document.querySelector('input[name="selectionMode"]:checked').value;
+      const container = document.getElementById('matchup-table-container');
+      const statusMessageDiv = document.getElementById('data-status-message');
+      const weekValidity = validitySummary[selectedWeek] || {};
+      
+      const weekMatchups = allMatchups.filter(m => m.week == selectedWeek);
+
+      const showBonus = config.bonusInclude;
+
+      let hasAnySpreadData = false;
+      let timeFetched = null;
+      if (weekMatchups.length > 0) {
+        // Find the first valid timeFetched value for the week
+        const firstGameWithData = weekMatchups.find(g => g.timeFetched);
+        if (firstGameWithData) {
+          timeFetched = new Date(firstGameWithData.timeFetched);
+          hasAnySpreadData = true;
+        }
+      }
+
+      if (weekMatchups.length === 0) {
+        container.innerHTML = '<p style="text-align: center; padding: 20px;">No matchups found for this week.</p>';
+        google.script.host.setHeight(250); // Set a small, fixed height
+        return;
+      }
+      const firstColumnHeader = selectionMode === 'matchup' ? 'Include<th>Day</th>' : 'Day';
+
+      let headerHtml = '<tr>';
+      headerHtml += `<th>${selectionMode === 'all' ? '' : 'Include'}</th>`;
+      headerHtml += `
+        <th>Time</th>
+        <th>Away</th>
+        <th>Home</th>
+        ${showSpreads ? '<th>Spread</th>' : ''}
+        ${showOverUnder ? '<th>O/U</th>' : ''}
+        ${showBonus ? '<th>Bonus</th>' : ''}
+      </tr>`;
+
+      let tableHtml = `
+        <table>
+          <thead>${headerHtml}</thead>
+          <tbody>
+      `;
+      
+      // ALL AND WEEKDAY SELECTION MODE UI CREATION
+      const gamesByDay = weekMatchups.reduce((acc, game) => {
+        const day = game.dayName || 'TBD';
+        if (!acc[day]) acc[day] = [];
+        acc[day].push(game);
+        return acc;
+      }, {});
+
+      for (const day in gamesByDay) {
+        // [FIXED] The slider HTML now uses the correct <label> wrapper.
+        const isDayChecked = selectionState.weekdays[day] !== false; // Default to true if undefined
+        let headerContent = '';
+        if (selectionMode === 'weekday') {
+          headerContent = `<label class="switch"><input type="checkbox" name="weekdayToggle" value="${day}" ${isDayChecked ? 'checked' : ''}><span class="slider"></span></label> <label for="weekday-${day}" style="margin-left: 5px;">${day}</label>`;
+        } else {
+          headerContent = day;
+        }
+        // [FIXED] The header is now a real table row with multiple cells for correct layout.
+        tableHtml += `<tr class="weekday-header"><td colspan="7">${headerContent}</td></tr>`;
+        
+        gamesByDay[day].forEach(game => {
+          const gameId = `${game.awayTeam}@${game.homeTeam}`;
+          let spreadCellContent = '';
+          let overUnderCellContent = '';
+          const currentMultiplier = bonusMultiplierState[gameId] || 1;
+          const isMatchupChecked = selectionState.matchups[gameId] !== false;
+          let firstCellContent = '';
+          
+          if (selectionMode === 'matchup') {
+            firstCellContent = `<label class="switch switch-small"><input type="checkbox" name="matchupToggle" value="${gameId}" ${isMatchupChecked ? 'checked' : ''}><span class="slider"></span></label>`;
+          }
+          const isRowEnabled = (selectionMode !== 'weekday' || isDayChecked) && (selectionMode !== 'matchup' || isMatchupChecked);
+          let rowClass = isRowEnabled ? '' : 'deselected-row';
+          if (showBonus && currentMultiplier === 2) {
+            rowClass += ' bonus-2x';
+          } else if (showBonus && currentMultiplier === 3) {
+            rowClass += ' bonus-3x';
+          }
+
+          const awayData = LEAGUE_DATA[game.awayTeam] || { colors: [] };
+          const homeData = LEAGUE_DATA[game.homeTeam] || { colors: [] };
+          const homeBg = (homeData.colors[1]?.toUpperCase() === '#FFFFFF') ? homeData.colors[2] : homeData.colors[1];
+
+          if (weekValidity.spreads) {
+              // --- View 1: Data exists. Render as click-to-edit static text. ---
+              const spreadValue = editedSpreadData[gameId]?.spread ?? (game.spread || 'N/A');
+              spreadCellContent = `<td class="editable-cell" data-type="spread" data-game-id="${gameId}" data-away="${game.awayTeam}" data-home="${game.homeTeam}">${spreadValue}</td>`;
+          } else if (isRowEnabled) {
+              // --- View 2: No data. Render as live input boxes. ---
+              const spreadValue = editedSpreadData[gameId]?.spread ?? '';
+              spreadCellContent = `<td><input type="text" class="live-input invalid-input" data-type="spread" data-game-id="${gameId}" value="${spreadValue}" placeholder="e.g. ${game.homeTeam} -3.5" data-away="${game.awayTeam}" data-home="${game.homeTeam}"></td>`;
+          } else {
+              // --- View 3: No data and deactivated. ---
+              const spreadValue = editedSpreadData[gameId]?.spread ?? '';
+              spreadCellContent = `<td><input type="text" class="live-input" data-type="spread" data-game-id="${gameId}" value="" placeholder="e.g. ${game.homeTeam} -3.5" data-away="${game.awayTeam}" data-home="${game.homeTeam}" disabled></td>`;
+          }
+
+          if (weekValidity.overUnders) {
+              // --- View 1: Data exists. Render as click-to-edit static text. ---
+              const overUnderValue = editedSpreadData[gameId]?.overUnder ?? (game.overUnder || 'N/A');
+              overUnderCellContent = `<td class="editable-cell" data-type="overUnder" data-game-id="${gameId}">${overUnderValue}</td>`;
+          } else if (isRowEnabled) {
+              // --- View 2: No data. Render as live input boxes. ---
+              const overUnderValue = editedSpreadData[gameId]?.overUnder ?? '';
+              overUnderCellContent = `<td><input type="text" class="live-input invalid-input" data-type="overUnder" data-game-id="${gameId}" value="${overUnderValue}" placeholder="e.g. 48.5"></td>`;
+          } else {
+              // --- View 2: No data. Render as live input boxes. ---
+              const overUnderValue = editedSpreadData[gameId]?.overUnder ?? '';
+              overUnderCellContent = `<td><input type="text" class="live-input" data-type="overUnder" data-game-id="${gameId}" value="" placeholder="e.g. 48.5" disabled></td>`;
+          }
+
+          const bonusCellHtml = showBonus ? `<td class="bonus-cell"><button type="button" class="bonus-button" data-game-id="${gameId}">${currentMultiplier}x</button></td>` : '';
+
+          tableHtml += `
+            <tr id="match-row-${gameId}" class="${rowClass}" data-day="${day}">
+              <td>${firstCellContent}</td>
+              <td>${formatTime(game.hour, game.minute)}</td>
+              <td>
+                <span class="team-cell team-cell-away"
+                      data-bg-color="${awayData.colors[0] || '#888'}"
+                      data-font-color="${awayData.colors[1] || '#fff'}"
+                      style="background-color: ${awayData.colors[0] || '#888'}; color: ${awayData.colors[1] || '#fff'};">
+                  ${game.awayTeam}${!config.hideEmojis ? awayData.mascot : ''}
+                </span>
+              </td>
+              <td>
+                <span class="team-cell team-cell-home"
+                      data-bg-color="${homeBg || '#888'}"
+                      data-font-color="${homeData.colors[0] || '#fff'}"
+                      style="background-color: ${homeBg || '#888'}; color: ${homeData.colors[0] || '#fff'};">
+                  ${game.homeTeam}${!config.hideEmojis ? homeData.mascot : ''}
+                </span>
+              </td>
+              ${showSpreads ? spreadCellContent : ''}
+              ${showOverUnder ? overUnderCellContent : ''}
+              ${bonusCellHtml}
+            </tr>
+          `;
+        });
+      }
+
+      tableHtml += '</tbody></table>';
+      container.innerHTML = tableHtml;
+
+      // WEEKDAY MODE LISTENER
+      document.querySelectorAll('input[name="weekdayToggle"]').forEach(toggle => {
+        toggle.addEventListener('change', (e) => {
+          const day = e.target.value;
+          const isChecked = e.target.checked;
+          selectionState.weekdays[day] = isChecked; // Update state
+
+          // Find all rows for this day and update their visuals using the helper.
+          document.querySelectorAll(`tr[data-day="${day}"]`).forEach(row => {
+            updateRowVisuals(row, isChecked);
+          });
+        });
+      });
+      // MATCHUP MODE LISTENER
+      document.querySelectorAll('input[name="matchupToggle"]').forEach(toggle => {
+        toggle.addEventListener('change', (e) => {
+          const gameId = e.target.value;
+          const isChecked = e.target.checked;
+          selectionState.matchups[gameId] = isChecked; // Update state
+          
+          const row = document.getElementById(`match-row-${gameId}`);
+          if (row) {
+            // Update this single row's visuals using the helper.
+            updateRowVisuals(row, isChecked);
+          }
+        });
+      });
+    }
+    
+    function adjustDialogHeight(selectedWeek) {
+        const weekMatchups = allMatchups.filter(m => m.week == selectedWeek);
+        const baseHeight = document.documentElement.scrollHeight;
+        const heightPerRow = 35; 
+        const calculatedHeight = Math.min(baseHeight + (weekMatchups.length * heightPerRow), 800);
+        google.script.host.setHeight(calculatedHeight);
+    }
+
+    function handleCellClick(e) {
+      const cell = e.target.closest('.editable-cell');
+      if (!cell || cell.querySelector('input')) {
+        return; // Click was not on an editable cell or it's already in edit mode
+      }
+      
+      if (!hasWarnedAboutOverride) {
+        alert("⚠️ ALERT: You are about to manually override data. Your changes will be saved for this form.");
+        hasWarnedAboutOverride = true; // Only show this alert once per session
+      }
+
+      const currentText = cell.textContent;
+      const dataType = cell.dataset.type; // 'spread' or 'overUnder'
+      const gameId = cell.dataset.gameId;
+
+      cell.innerHTML = `<input type="text" value="${currentText}" style="width: ${dataType == 'spread' ? '57px' : '28px'};" />`;
+      const input = cell.querySelector('input');
+      input.focus();
+      input.select();
+
+      const saveEdit = () => {
+        const newValue = input.value.trim();
+        
+        // Update the state object
+        if (!editedSpreadData[gameId]) {
+          editedSpreadData[gameId] = {};
+        }
+        editedSpreadData[gameId][dataType] = newValue;
+
+        // Revert the cell to text
+        cell.innerHTML = newValue;
+      };
+
+      input.addEventListener('blur', saveEdit);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          saveEdit();
+        } else if (e.key === 'Escape') {
+          cell.innerHTML = currentText;
+        }
+      });
+    }
+
+    function handleLiveInputChange(e) {
+        const input = e.target;
+        if (!input.classList.contains('live-input')) return;
+
+        const dataType = input.dataset.type;
+        const gameId = input.dataset.gameId;
+        const newValue = input.value.trim();
+
+        if (!editedSpreadData[gameId]) {
+          editedSpreadData[gameId] = {};
+        }
+        editedSpreadData[gameId][dataType] = newValue;
+    }
+    
+    function handleInputChange(e) {
+      const input = e.target;
+      const row = input.closest('tr');
+      if (!input.matches('.live-input, .editable-cell input')) return;
+
+      const cell = input.closest('td');
+      const dataType = input.dataset.type || cell.dataset.type;
+      const gameId = input.dataset.gameId || cell.dataset.gameId;
+      const awayTeam = input.dataset.away; // Get from data attribute
+      const homeTeam = input.dataset.home; // Get from data attribute
+      let isValid = true;
+      if (row.matches('.deselected-row')) {
+        input.classList.remove('invalid-input');
+        cell.classList.remove('validation-tooltip');
+        editedSpreadData[gameId][dataType] = null;
+        return;
+      }
+      
+      if (dataType === 'spread') {
+          isValid = isValidSpread(input.value, awayTeam, homeTeam);
+      } else if (dataType === 'overUnder') {
+          isValid = isValidOverUnder(input.value);
+      }
+
+      input.classList.toggle('invalid-input', !isValid);
+      cell.classList.toggle('validation-tooltip', !isValid);
+      
+      if (isValid) {
+          // Save the valid data to our state object
+          const newValue = input.value.trim();
+          if (!editedSpreadData[gameId]) editedSpreadData[gameId] = {};
+          editedSpreadData[gameId][dataType] = newValue;
+      }
+      
+      // After any change, re-check the status message
+      renderStatusMessage(document.getElementById('week-select').value);
+    }
+
+    function handleBonusClick(e) {
+      const button = e.target.closest('.bonus-button');
+      if (!button) return;
+      const row = e.target.closest('tr');
+      if (row.matches('.deselected-row')) {
+        row.classList.remove('bonus-2x', 'bonus-3x');
+        return;
+      }
+      
+      const gameId = button.dataset.gameId;
+      
+      // Cycle through the values: 1 -> 2 -> 3 -> 1
+      let currentMultiplier = bonusMultiplierState[gameId] || 1;
+      let nextMultiplier = currentMultiplier >= 3 ? 1 : currentMultiplier + 1;
+      
+      // Update the state
+      bonusMultiplierState[gameId] = nextMultiplier;
+      
+      // Update the UI
+      button.textContent = `${nextMultiplier}x`;
+      
+      row.classList.remove('bonus-2x', 'bonus-3x');
+      if (nextMultiplier === 2) {
+        row.classList.add('bonus-2x');
+      } else if (nextMultiplier === 3) {
+        row.classList.add('bonus-3x');
+      }
+    }
+    
+    /**
+     * Handles the click on the "Fetch Latest Spreads" button.
+     */
+    function handleFetchSpreadsClick() {
+      const selectedWeek = document.getElementById('week-select').value;
+      
+      // Show the loader with a specific message
+      showLoader();
+      google.script.run
+        .withSuccessHandler(onFetchSpreadsSuccess)
+        .withFailureHandler(onDataFetchFailure) // Can reuse the general failure handler
+        .fetchLatestSpreadsForWeek(selectedWeek);
+    }
+
+    /**
+     * [NEW] Handles the successful return from the spread fetch.
+     * It then re-triggers the initial data load to refresh the entire panel.
+     */
+    function onFetchSpreadsSuccess(response) {
+      console.log(response.message);
+      hideLoader();
+      // This is the key: after a successful fetch, we re-run the original data load
+      // to get the fresh data and automatically re-render the entire UI.
+      google.script.run
+        .withSuccessHandler(applyInitialData)
+        .withFailureHandler(onDataFetchFailure)
+        .fetchFormCreationData();
+    }
+
+    /**
+     * Validates a spread value.
+     * Allowed formats: "TEAM -7.5", "TEAM +3", "PK", "PUSH", "EVEN".
+     * @param {string} value The input string to validate.
+     * @param {string} awayTeam The away team abbreviation.
+     * @param {string} homeTeam The home team abbreviation.
+     * @returns {boolean} True if the format is valid.
+     */
+    function isValidSpread(value, awayTeam, homeTeam) {
+      const upperVal = value.toUpperCase();
+      // Check for valid text alternatives to a 0 spread
+      if (['PK', 'PUSH', 'EVEN', '0'].includes(upperVal)) return true;
+
+      // Regular expression to match "TEAM +/-X.5" or "TEAM +/-X"
+      const spreadRegex = new RegExp(`^(${awayTeam}|${homeTeam})\\s([-])(\\d+(\\.5)?)$`, 'i');
+      return spreadRegex.test(value);
+    }
+
+    /**
+     * Validates an Over/Under value.
+     * Must be a number between 0.5 and 99.5 and end in .5.
+     * @param {string} value The input string to validate.
+     * @returns {boolean} True if the format is valid.
+     */
+    function isValidOverUnder(value) {
+      const num = parseFloat(value);
+      if (isNaN(num)) return false; // Not a number
+      if (num < 0.5 || num > 99.5) return false; // Out of range
+      return endsWithHalf(value);
+    }
+
+    function endsWithHalf(value) {
+      // Multiply the number by 2
+      const doubled = value * 2;
+      // Check if the result is a whole number (an integer)
+      return Number.isInteger(doubled);
+    }
+
+    /**
+     * Validates that all required data is present for selected games
+     * @param {Array} includedGameIds - Array of game IDs that are selected for inclusion
+     * @param {Array} weekMatchups - All matchups for the selected week
+     * @returns {Object} - {isValid: boolean, message: string}
+     */
+    function validateRequiredData(includedGameIds, weekMatchups) {
+      const missingSpreads = [];
+      const missingOverUnders = [];
+      
+      // Only validate if the respective features are enabled
+      const needsSpreads = showSpreads;
+      const needsOverUnders = showOverUnder;
+      
+      // If neither spreads nor over/unders are required, validation passes
+      if (!needsSpreads && !needsOverUnders) {
+        return { isValid: true, message: '' };
+      }
+
+      includedGameIds.forEach(gameId => {
+        const originalGame = weekMatchups.find(g => `${g.awayTeam}@${g.homeTeam}` === gameId);
+        if (!originalGame) return;
+
+        // Get the current values (either from edits or original data)
+        const currentSpread = editedSpreadData[gameId]?.spread ?? originalGame.spread;
+        const currentOverUnder = editedSpreadData[gameId]?.overUnder ?? originalGame.overUnder;
+        
+        // Check spreads if required
+        if (needsSpreads) {
+          if (!isValidSpread(currentSpread, originalGame.awayTeam, originalGame.homeTeam)) {
+            missingSpreads.push(`${originalGame.awayTeam}@${originalGame.homeTeam}`);
+          } else {
+            // Validate format if data exists
+            if (!isValidSpread(currentSpread, originalGame.awayTeam, originalGame.homeTeam)) {
+              missingSpreads.push(`${originalGame.awayTeam}@${originalGame.homeTeam} (invalid format)`);
+            }
+          }
+        }
+        
+        // Check over/unders if required
+        if (needsOverUnders) {
+          if (!isValidOverUnder(currentOverUnder)) {
+            missingOverUnders.push(`${originalGame.awayTeam}@${originalGame.homeTeam}`);
+          } else {
+            // Validate format if data exists
+            if (!isValidOverUnder(currentOverUnder)) {
+              missingOverUnders.push(`${originalGame.awayTeam}@${originalGame.homeTeam} (invalid format)`);
+            }
+          }
+        }
+      });
+
+      // Build error message if there are issues
+      let errorMessage = '';
+      if (missingSpreads.length > 0 || missingOverUnders.length > 0) {
+        errorMessage = '❌ ISSUE: ODDS DATA ISSUE!\n\n';
+        
+        if (missingSpreads.length > 0) {
+          errorMessage += `Missing or invalid SPREADS for ${missingSpreads.length} game${missingSpreads.length !== 1 ? 's' : ''}:\n`;
+          errorMessage += missingSpreads.map(game => `${game}`).join(', ') + '\n\n';
+        }
+        
+        if (missingOverUnders.length > 0) {
+          errorMessage += `Missing or invalid OVER/UNDER values for ${missingOverUnders.length} game${missingOverUnders.length !== 1 ? 's' : ''}:\n`;
+          errorMessage += missingOverUnders.map(game => `${game}`).join(', ') + '\n\n';
+        }
+        
+        errorMessage += 'Please fill in all required fields (highlighted in orange) before creating the form.';
+        
+        return { isValid: false, message: errorMessage };
+      }
+
+      return { isValid: true, message: '' };
+    }
+
+
+    function onDataFetchFailure(error) {
+      console.error('Error fetching member data:', error);
+      alert('Could not load member data. Please try closing and reopening the panel.');
+      hideLoader();
+    }
+
+    /**
+     * Scrubs the editedSpreadData state object of any data that is no longer
+     * relevant based on the current configuration (e.g., if ATS is turned off).
+     */
+    function scrubInvalidatedData() {
+      const showSpreads = config.pickemsAts || config.survivorAts;
+      const showOverUnder = config.tiebreakerInclude && config.overUnderInclude;
+
+      // If both are visible, there's nothing to scrub.
+      if (showSpreads && showOverUnder) return;
+
+      for (const gameId in editedSpreadData) {
+        const edits = editedSpreadData[gameId];
+        
+        // If spreads are not shown, delete any spread edits for this game.
+        if (!showSpreads && edits.hasOwnProperty('spread')) {
+          delete edits.spread;
+        }
+
+        // If O/U is not shown, delete any over/under edits for this game.
+        if (!showOverUnder && edits.hasOwnProperty('overUnder')) {
+          delete edits.overUnder;
+        }
+
+        // If the game object is now empty, remove it entirely.
+        if (Object.keys(edits).length === 0) {
+          delete editedSpreadData[gameId];
+        }
+      }
+    }
+
+    /**
+     * A single helper function that controls all visual
+     * aspects of a row when it's enabled or disabled.
+     *
+     * @param {HTMLElement} row The <tr> element to modify.
+     * @param {boolean} isEnabled The desired state (true for active, false for deselected).
+     */
+    function updateRowVisuals(row, isEnabled) {
+      row.classList.toggle('deselected-row', !isEnabled);
+
+      if (!isEnabled) {
+        row.classList.remove('bonus-2x', 'bonus-3x');
+      } else {
+        const button = row.querySelector('.bonus-button');
+        if (button) {
+            const gameId = button.dataset.gameId;
+            const currentMultiplier = bonusMultiplierState[gameId] || 1;
+            row.classList.toggle('bonus-2x', currentMultiplier === 2);
+            row.classList.toggle('bonus-3x', currentMultiplier === 3);
+        }
+        }
+      
+      const inputs = row.querySelectorAll('input.live-input, td.editable-cell > input');
+      
+      inputs.forEach(input => {
+        if (isEnabled) {
+          input.disabled = false;
+          const dataType = input.dataset.type;
+          const gameId = input.dataset.gameId;
+          const awayTeam = input.dataset.away;
+          const homeTeam = input.dataset.home;
+          
+          let isValid = true;
+          if (dataType === 'spread') {
+            isValid = isValidSpread(input.value, awayTeam, homeTeam);
+          } else if (dataType === 'overUnder') {
+            isValid = isValidOverUnder(input.value);
+          }
+          input.classList.toggle('invalid-input', !isValid);
+
+        } else {
+          input.classList.remove('invalid-input');
+          input.disabled = true;
+        }
+      });
+    }
+
+    /**  Gathers all user intent from the panel, builds a clean
+     * "game plan" object, and sends it to the server for processing.
+     */
+    function handleSubmit() {
+      showLoader(); // Show spinner on submit
+
+      const selectedWeek = document.getElementById('week-select').value;
+      const selectionMode = document.querySelector('input[name="selectionMode"]:checked').value;
+      const weekMatchups = allMatchups.filter(m => m.week == selectedWeek);
+      
+      let includedGameIds = [];
+
+      // Determine the list of included games based on the mode and state
+      if (selectionMode === 'all') {
+        includedGameIds = weekMatchups.map(game => `${game.awayTeam}@${game.homeTeam}`);
+      } 
+      else if (selectionMode === 'weekday') {
+        const enabledDays = Object.keys(selectionState.weekdays).filter(day => selectionState.weekdays[day]);
+        includedGameIds = weekMatchups
+          .filter(game => enabledDays.includes(game.dayName))
+          .map(game => `${game.awayTeam}@${game.homeTeam}`);
+      } 
+      else if (selectionMode === 'matchup') {
+        includedGameIds = Object.keys(selectionState.matchups)
+          .filter(gameId => selectionState.matchups[gameId] && weekMatchups.some(g => `${g.awayTeam}@${g.homeTeam}` === gameId))
+          .map(gameId => gameId);
+      }
+
+      if (includedGameIds.length === 0) {
+        alert('You must select at least one game to include in the form.');
+        hideLoader();
+        return;
+      }
+
+      const validationResult = validateRequiredData(includedGameIds, weekMatchups);
+      if (!validationResult.isValid) {
+        hideLoader();
+        alert(validationResult.message);
+        return;
+      }
+
+      const formName = `${config.groupName} - Week ${selectedWeek} - ${config.year}`
+      // Now, build the detailed "game plan" for only the included games.
+      const gamePlan = {
+        week: selectedWeek,
+        membershipLocked: config.membershipLocked,
+        formName: formName,
+        games: []
+      };
+
+      includedGameIds.forEach(gameId => {
+        const originalGame = weekMatchups.find(g => `${g.awayTeam}@${g.homeTeam}` === gameId);
+        if (originalGame) {
+          gamePlan.games.push({
+            // Core game info
+            awayTeam: originalGame.awayTeam,
+            homeTeam: originalGame.homeTeam,
+            awayTeamLocation: originalGame.awayTeamLocation,
+            awayTeamName: originalGame.awayTeamName,
+            homeTeamLocation: originalGame.homeTeamLocation,
+            homeTeamName: originalGame.homeTeamName,
+            dayName: originalGame.dayName,
+            hour: originalGame.hour,
+            minute: originalGame.minute,
+            type: originalGame.type,
+            divisional: originalGame.divisional,
+            // User-defined overrides and selections
+            spread: editedSpreadData[gameId]?.spread ?? originalGame.spread,
+            overUnder: editedSpreadData[gameId]?.overUnder ?? originalGame.overUnder,
+            bonus: bonusMultiplierState[gameId] || 1
+          });
+        }
+      });
+
+      console.log("Submitting Game Plan:", gamePlan);
+
+      google.script.run
+        .withSuccessHandler(onSubmitSuccess)
+        .withFailureHandler(onSubmitFailure)
+        .createNewFormForWeek(gamePlan);
+    }
+
+    function onSubmitSuccess(response) {
+      hideLoader();
+      // Check if the server sent back the special "template opened" signal.
+      if (response && response.status === 'TEMPLATE_OPENED') {
+        // The server already showed the link dialog. The user's job here is done.
+        // We just need to cleanly close this panel.
+        console.log("Template opened. Closing form creator panel.");
+        google.script.host.close();
+        return; // Stop execution here.
+      }
+      
+      // This is the normal success path for when a form is actually created.
+      if (response && response.message) {
+        alert(response.message);
+      }
+      google.script.host.close();
+    }
+    function onSubmitFailure(error) {
+      hideLoader();
+      
+      // Check if the error message contains our special cancellation code.
+      if (error && error.message.includes("CANCELLED_BY_USER")) {
+        // This was an intentional cancellation, not an unexpected error.
+        console.log("Form creation was cancelled by the user at a prompt.");
+        // We can optionally show a gentle toast message.
+        google.script.run.showToast('Form creation cancelled.');
+        // And then cleanly close the panel.
+        google.script.host.close();
+      } else {
+        // This is a real, unexpected error. Show the full error message.
+        alert('An unexpected error occurred: ' + (error ? error.message : 'Unknown error'));
+      }
+    }  
+  </script>
+</body>
+</html>
