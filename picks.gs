@@ -262,7 +262,7 @@ const LEAGUE_DATA = {
       "#FFFFFF",
       "#EDC8A3"
     ],
-    "mascot": "🟤",
+    "mascot": "🟠",
     "colors_emoji": "🟤🟠"
   },
   "DAL": {
@@ -3439,7 +3439,7 @@ function createNewFormForWeek(gamePlan) {
       Logger.log(`Issue passing the new spread data to the ${LEAGUE} sheet, moving on (these spreads are saved with the 'forms' variable).`)
     }
   } else if (config.pickemsAts || config.survivorAts || config.eliminatorAts) {
-    ss.toast(`Using the existing spread data from the ${LEAGUE} sheet for week ${week}.`,`✅ USING API SPREADS`);
+    ss.toast(`Using the existing spread data from the ${LEAGUE} sheet for week ${week}.`,`✅ USING EXISTING SPREADS`);
   }
 
   
@@ -3509,7 +3509,7 @@ function createNewFormForWeek(gamePlan) {
         Logger.log(`Could not set up trigger for new week ${week} form: ${err.stack}`);
       }
       
-      showLinkDialog(newFormDetails.publishedUrl, `Success!`, `Open Week ${week} Form`, `Open '${gamePlan.formName}' and review if desired. Then share with your group! Keep in mind you have it set to ${gamePlan.membershipLocked ? 'allow new members to join via the form' : 'prevent new members from joining via the form'}`);
+      showFormActionsDialog(newFormsData, week);
 
       return { success: true, message: `✅ Successfully created form for week ${week}.` };
     } else {
@@ -3972,7 +3972,7 @@ function buildPickemQuestions(ss, form, gamePlan, config) {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
     const mnf = evening && game.dayName === "Monday";
-    let title = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}${game.divisonal == 1 ? ' ('+game.division+' Divsional Game)':''}`;
+    let title = `${game.awayTeamLocation} ${game.awayTeamName} at ${game.homeTeamLocation} ${game.homeTeamName}${game.divisional == 1 ? ' ('+game.division+' Divisional Game)':''}`;
     let helpText = `${mnf ? 'Monday Night Football' : game.dayName} at ${formatTime(game.hour, game.minute)}`;
     if (config.pickemsAts && game.spread) helpText += `  |  Spread: ${game.spread}`;
     if (game.bonus > 1) title += ` (${game.bonus}x Bonus)`;
@@ -5637,6 +5637,70 @@ function showLinkDialog(url, title, linkText, subText) {
   const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(400).setHeight(180);
   SpreadsheetApp.getUi().showModalDialog(htmlOutput, title);
 }
+
+/**
+ * Displays a polished dialog with "Edit," "Open," and "Copy Link"
+ * action buttons for a newly created form.
+ *
+ * @param {Object} newFormsData An object containing the form's URLs and other details.
+ * @param {number} week The week number for which the form was created.
+ */
+function showFormActionsDialog(newFormsData, week) {
+  // Destructure the URLs from the input object for easy access
+  const { editUrl, publishedUrl } = newFormsData;
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <base target="_top">
+      <style>
+        body { font-family: 'Montserrat', Arial, sans-serif; padding: 10px; text-align: center; }
+        h2 { color: #013369; margin-top: 0; }
+        p { font-size: 14px; color: #333; }
+        .button-row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
+        .btn { padding: 8px 15px;  font-size: 14px;  font-weight: 600;  border: none;  border-radius: 5px;  cursor: pointer;  color: white;  text-decoration: none; display: flex;  align-items: center;  justify-content: center;  gap: 5px; }
+        .btn-primary { background-color: #013369; }
+        .btn-primary:hover { background-color: #2067b3; }a
+        .btn-secondary { background-color: #878787; }
+        .btn-secondary:hover { background-color: #A8A8A8; }
+        .btn-alert { background-color: #ff913d; }
+        .btn-alert:hover { background-color: #e86705; }
+        button.btn-alert { color: white; }
+      </style>
+    </head>
+    <body>
+      <h2>✅ Success!</h2>
+      <p>Your form for Week ${week} has been created. Your form ${newFormsData.gamePlan.membershipLocked ? 'is open to new members.' : 'only accepts submissions from existing members.'} Copy and share the link with your pool members.</p>
+      <div class="button-row">
+        <a href="${editUrl}" target="_blank" class="btn btn-secondary">📝 Edit Form</a>
+        <a href="${publishedUrl}" target="_blank" class="btn btn-primary">📂 Open Form</a>
+        <button id="copy-btn" class="btn btn-alert">📤 Copy Link</button>
+      </div>
+      <script>
+        document.getElementById('copy-btn').onclick = function() {
+          const linkToCopy = "${publishedUrl}";
+          const button = this;
+          navigator.clipboard.writeText(linkToCopy).then(() => {
+            button.textContent = '✅ Copied!';
+            button.disabled = true;
+            setTimeout(() => {
+              button.textContent = '📤 Copy Link';
+              button.disabled = false;
+            }, 2000);
+          }).catch(err => {
+            console.error('Failed to copy: ', err);
+            prompt("Please copy this link manually:", linkToCopy);
+          });
+        };
+      </script>
+    </body>
+    </html>
+  `;
+  
+  const htmlOutput = HtmlService.createHtmlOutput(htmlContent).setWidth(450).setHeight(200);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, `Week ${week} Form Created`);
+}
+
 
 /**
  * Generates a simple, robust, and sufficiently unique ID string.
