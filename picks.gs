@@ -4667,7 +4667,9 @@ function updateOutcomeSheetVisibility(config) {
       for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
         outcomesSheet.unhideColumn(outcomesSheet.getRange(1, i));
       }
-      
+      outcomesSheet.getRange(ss.getRangeByName(`${LEAGUE}_OUTCOMES_1`).getRow()-2,1,1,outcomesSheet.getMaxColumns()).setFontSize(8);
+      outcomesSheet.getRange(ss.getRangeByName(`${LEAGUE}_OUTCOMES_1`).getRow()-1,1,1,outcomesSheet.getMaxColumns()).setFontSize(10);
+      outcomesSheet.setColumnWidths(1,outcomesSheet.getMaxColumns(),50);
     } else if (!isAnyAtsActive && isCurrentlyVisible) {
       // ATS is OFF, but columns are VISIBLE -> HIDE them.
       Logger.log(`✅ MARGIN COLUMNS HIDDEN: Hiding ATS Margin columns...`);
@@ -4675,6 +4677,9 @@ function updateOutcomeSheetVisibility(config) {
       for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
         outcomesSheet.hideColumns(i);
       }
+      outcomesSheet.getRange(ss.getRangeByName(`${LEAGUE}_OUTCOMES_1`).getRow()-2,1,1,outcomesSheet.getMaxColumns()).setFontSize(7);
+      outcomesSheet.getRange(ss.getRangeByName(`${LEAGUE}_OUTCOMES_1`).getRow()-1,1,1,outcomesSheet.getMaxColumns()).setFontSize(8);
+      outcomesSheet.setColumnWidths(1,outcomesSheet.getMaxColumns(),60);
     }
     // If state is already correct (e.g., ATS is on and columns are visible), do nothing.
 
@@ -6274,61 +6279,6 @@ function outcomesSheetUpdate(ss,week,config,gamePlan) {
     }
   }
 }
-
-/**
- * Intelligently shows or hides the "Margin" columns on the OUTCOMES sheet
- * based on whether any ATS mode is active in the configuration.
- *
- * @param {Object} [config] Optional: The configuration object. If not provided, it will be fetched.
- */
-function updateOutcomeSheetVisibility(config) {
-  try {
-    // 1. Receive or Fetch Config
-    if (!config) {
-      const docProps = PropertiesService.getDocumentProperties();
-      config = JSON.parse(docProps.getProperty('configuration') || '{}');
-    }
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
-    if (!outcomesSheet) {
-      Logger.log("❗NO OUTCOMES SHEET FOUND: Sheet not found. Cannot update column visibility.");
-      return; // Exit gracefully if the sheet doesn't exist.
-    }
-
-    // 2. Determine the required state
-    const isAnyAtsActive = config.pickemsAts || config.survivorAts || config.eliminatorAts;
-    
-    // 3. Check the current state of the first margin column to avoid unnecessary actions.
-    const firstMarginColumn = 2; // Column B
-    const isCurrentlyVisible = !outcomesSheet.isColumnHiddenByUser(firstMarginColumn);
-
-    // 4. Act only if the current state doesn't match the required state.
-    if (isAnyAtsActive && !isCurrentlyVisible) {
-      // ATS is ON, but columns are HIDDEN -> UNHIDE them.
-      Logger.log(`✅ MARGIN COLUMNS VISIBLE: Showing ATS Margin columns...`);
-      // Loop through all even columns and unhide them individually.
-      // Unfortunately, Sheets API does not have an "unhideColumns" for multiple non-contiguous ranges.
-      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
-        outcomesSheet.unhideColumn(outcomesSheet.getRange(1, i));
-      }
-      
-    } else if (!isAnyAtsActive && isCurrentlyVisible) {
-      // ATS is OFF, but columns are VISIBLE -> HIDE them.
-      Logger.log(`✅ MARGIN COLUMNS HIDDEN: Hiding ATS Margin columns...`);
-      // It's more efficient to hide columns in batches if possible, but looping is reliable.
-      for (let i = firstMarginColumn; i <= outcomesSheet.getMaxColumns(); i += 2) {
-        outcomesSheet.hideColumns(i);
-      }
-    }
-    // If state is already correct (e.g., ATS is on and columns are visible), do nothing.
-
-  } catch (error) {
-    Logger.log("❗ ERROR HIDING COLUMNS: Error updating OUTCOMES sheet visibility: " + error.toString());
-  }
-}
-
-
 
 
 /** 
