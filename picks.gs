@@ -1,7 +1,3 @@
-function viewMembers(){
-  SpreadsheetApp.getUi().alert(JSON.stringify(JSON.parse(PropertiesService.getDocumentProperties().getProperty('members'))));
-}
-
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
@@ -1251,8 +1247,9 @@ function processMemberSubmission(clientData) {
         finalData.members[permanentId] = createNewMember(
           memberDetails.name,
           memberDetails.paid,
+          config,
           currentWeek
-        );;
+        );
       } else {
         // This is an existing member. Keep their permanent ID.
         finalData.memberOrder.push(id);
@@ -1301,7 +1298,6 @@ function processMemberSubmission(clientData) {
 
 /**
  * Creates a complete, correctly structured object for a new member.
- * It correctly pads the historical arrays for past weeks.
  *
  * @param {string} name The new member's name.
  * @param {boolean} isPaid The initial paid status.
@@ -1309,10 +1305,9 @@ function processMemberSubmission(clientData) {
  * @param {number} joinWeek The week number the member is joining in.
  * @returns {Object} The complete new member object.
  */
-function createNewMember(name, isPaid, week) {
-  // --- [THE NEW LOGIC] Create padded arrays for history ---
-  // Create an array with (week - 1) empty slots. (week = joining week)
-  const fill = Array(week > 1 ? week - 1 : 0).fill(null);
+function createNewMember(name, isPaid, config, joinWeek) {
+  // Create an array with (joinWeek - 1) empty slots for weeks they missed.
+  const pastWeekPadding = Array(joinWeek > 1 ? joinWeek - 1 : 0).fill(null);
 
   const newMember = {
     name: name,
@@ -1322,17 +1317,28 @@ function createNewMember(name, isPaid, week) {
     
     // Survivor Properties
     sR: 0,
-    sP: [...fill],
-    sE: [...fill],
-    sL: [...fill],
-    sO: null, // Week Out
+    sP: [...pastWeekPadding],
+    sE: [...pastWeekPadding],
+    sL: [...pastWeekPadding], // The 'lives array' starts with padding for past weeks
+    sO: null,
+    
     // Eliminator Properties
     eR: 0,
-    eP: [...fill],
-    eE: [...fill],
-    eL: [...fill],
-    eO: null // Week Out
+    eP: [...pastWeekPadding],
+    eE: [...pastWeekPadding],
+    eL: [...pastWeekPadding],
+    eO: null
   };
+
+  // --- [THE CRUCIAL FIX] ---
+  // Now, set the initial number of lives for the week they are joining.
+  // This value will be pushed onto the end of the padded array.
+  if (config.survivorInclude && joinWeek >= config.survivorStartWeek) {
+    newMember.sL.push(parseInt(config.survivorLives, 10) || 1);
+  }
+  if (config.eliminatorInclude && joinWeek >= config.eliminatorStartWeek) {
+    newMember.eL.push(parseInt(config.eliminatorLives, 10) || 1);
+  }
   
   return newMember;
 }
@@ -3703,16 +3709,13 @@ function buildFormFromGamePlan(gamePlan) {
           foundNewSheet = true;
           break; // Exit the loop immediately
         }
-        
         waitPeriod++;
       }
       if (!foundNewSheet) {
         throw new Error(`Timed out waiting for new response sheet to be created after ${waitPeriod - 1} attempts.`);
       }
-
     
       let newResponseSheet = null;
-
 
       // Method 1: Find the sheet that wasn't there before
       for (const sheet of updatedSheets) {
@@ -3802,125 +3805,114 @@ function buildFormFromGamePlan(gamePlan) {
 
     const finalSubmitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
     
-    // --- [THE NEW COMBINED LOGIC] ---
-    const pageDestinations = {}; // Will map memberId -> destination page
+    // NEW LOGIC
+    const pageDestinations = {};
     
-    // Report on members before diving in:
     memberData.memberOrder.forEach(memberId => {
       const member = memberData.members[memberId];
       Logger.log(`🔹${member.name} Data\nSurvivor Lives: ${member.sL}\nEliminator Lives: ${member.eL}`);
     });
-
+    
     const survivorIsActive = !config.survivorDone && config.survivorInclude && week >= config.survivorStartWeek;
     const eliminatorIsActive = !config.eliminatorDone && config.eliminatorInclude && week >= config.eliminatorStartWeek;
+    const sStartWeek = parseInt(config.survivorStartWeek, 10);
+    const eStartWeek = parseInt(config.eliminatorStartWeek, 10);
 
-    const sLS = config.survivorLives;
-    const eLS = config.eliminatorLives;
-    let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
-    let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts)
-    // 1. First, find members active in BOTH contests and create their combined page.
-    if (survivorIsActive && eliminatorIsActive) {
-      ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
-      Logger.log('👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active')
-      memberData.memberOrder.forEach(memberId => {
-        
-        const member = memberData.members[memberId];
-        if (member && member.active && member.sL[week-2] > 0 && member.eL[week-2] > 0) {
-          let survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[week-2],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[week-2],sLS)} (${member.sL[week-2] < sLS ? member.sL[week-2] + ' remaining' : 'all remaining'})`;
-          let eliminatorHelp = eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[week-2],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[week-2],eLS)} (${member.eL[week-2] < eLS ? member.eL[week-2] + ' remaining' : 'all remaining'})`;
-          const helpText = `${survivorHelp}  |  ${eliminatorHelp}`;
-          const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Picks`).setHelpText(helpText);
-          combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          
-          // Add both questions to this single page
-          addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
-          addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
-          
-          pageDestinations[memberId] = combinedPage; // Assign their destination
-          Logger.log(`👑&💀 Questions for ${member.name} created.`);
-        }
-        
-      });
+    // A. Handle First Week of a Contest (Common Page)
+    let firstWeekContestPage = null;
+    if ((survivorIsActive && week === sStartWeek) || (eliminatorIsActive && week === eStartWeek)) {
+      firstWeekContestPage = form.addPageBreakItem().setTitle('Contest Picks');
+      firstWeekContestPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+      
+      if (survivorIsActive && week === sStartWeek) {
+        addContestQuestion(form, 'survivor', {}, config, gamePlan); // Pass empty member for generic question
+      }
+      if (eliminatorIsActive && week === eStartWeek) {
+        addContestQuestion(form, 'eliminator', {}, config, gamePlan); // Pass empty member for generic question
+      }
     }
-    ss.toast(`Created questions for members who are in both survivor and eliminator for week ${week}`,`✅&✅ SURVIVOR/ELIMINATOR DONE`);
-    ss.toast(`✅&✅ Created questions for members who are in both survivor and eliminator for week ${week}`);
-    // 2. Next, handle members active in ONLY ONE contest.
+
+    // B. Handle Subsequent Weeks (Individual Pages)
+    if (week > 1 && (survivorIsActive || eliminatorIsActive)) {
+        let allSurvivorTeamsForWeek = survivorIsActive ? buildTeamList(gamePlan, config, config.survivorAts) : [];
+        let allEliminatorTeamsForWeek = eliminatorIsActive ? buildTeamList(gamePlan, config, config.eliminatorAts) : [];
+
+        memberData.memberOrder.forEach(memberId => {
+            const member = memberData.members[memberId];
+
+            // --- [THE DEFINITIVE FIX] ---
+            // This eligibility check works for BOTH old (number) and new (array) data formats.
+            const isEligibleForSurvivor = survivorIsActive && isMemberEligible(member, 'survivor', week);
+            const isEligibleForEliminator = eliminatorIsActive && isMemberEligible(member, 'eliminator', week);
+            
+            if (isEligibleForSurvivor && isEligibleForEliminator) {
+                // ... Your correct logic to create a combined page ...
+                const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Contest Picks`);
+                combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
+                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
+                pageDestinations[memberId] = combinedPage;
+            } else if (isEligibleForSurvivor) {
+                // ... Your correct logic to create a survivor-only page ...
+                const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`);
+                survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
+                pageDestinations[memberId] = survivorPage;
+            } else if (isEligibleForEliminator) {
+                // ... Your correct logic to create an eliminator-only page ...
+                const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`);
+                eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
+                pageDestinations[memberId] = eliminatorPage;
+            }
+        });
+    }
     
-    let text = `questions for members who are in both survivor and eliminator for week ${week}`;
-    let heading = `SURVIVOR OR ELIMINATOR`;
-    let icon = `👑/💀`;
-    let doneIcon = `✅/✅`
-    if (config.survivorInclude && !config.eliminatorInclude) {
-      text = `questions for members who are in survivor for week ${week}`;
-      heading = `SURVIVOR`;
-      icon = `👑`;
-      doneIcon = `✅`
-    } if (!config.survivorInclude && config.eliminatorInclude) {
-      text = `questions for members who are in eliminator for week ${week}`;
-      heading = `ELIMINATOR`;
-      icon = `💀`;
-      doneIcon = `✅`
-    }
-    ss.toast(`Creating ${text}`, `${icon} ${heading}`);
-    Logger.log(`${icon} Creating ${text}`);
-    memberData.memberOrder.forEach(memberId => {
-      // Skip members we've already handled
-      if (pageDestinations[memberId]) return;
+    // --- 3. Build the Name Dropdown (with corrected logic) ---
+    Logger.log('Creating links for name drop-down...');
+    let nameChoices = [];
+    const eligibleMembers = [];
 
+    memberData.memberOrder.forEach(memberId => {
       const member = memberData.members[memberId];
       if (member && member.active) {
-        if (survivorIsActive && member.sL[week-2] > 0) {
-          const helpText = `Survivor Lives: ${createLivesString(member.sL[week-2],sLS)} (${member.sL[week-2]})`;
-          const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`).setHelpText(helpText);
-          survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
-          pageDestinations[memberId] = survivorPage;
-          Logger.log(`👑 Question for ${member.name} created.`);
-        } else if (eliminatorIsActive && member.eL[week-2] > 0) {
-          const helpText = `Eliminator Lives: ${createLivesString(member.eL[week-2],eLS)} (${member.eL[week-2]})`;
-          const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`).setHelpText(helpText);
-          eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-          addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
-          pageDestinations[memberId] = eliminatorPage;
-          Logger.log(`💀 Question for ${member.name} created.`);
+        let destination = finalSubmitPage;
+        let isEligible = false;
+
+        if (week === sStartWeek || week === eStartWeek) {
+          // It's the first week of a contest, everyone active is eligible.
+          isEligible = (survivorIsActive && week === sStartWeek) || (eliminatorIsActive && week === eStartWeek);
+          if (isEligible) destination = firstWeekContestPage;
         } else {
-          Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
+          // For later weeks, eligibility is determined by having a custom page.
+          if (pageDestinations[memberId]) {
+            isEligible = true;
+            destination = pageDestinations[memberId];
+          }
+        }
+
+        // Add the member to the dropdown if they are eligible for any game.
+        if (isEligible || config.pickemsInclude) {
+          nameChoices.push(nameQuestion.createChoice(member.name, destination));
+          eligibleMembers.push(member.name);
         }
       }
     });
-    ss.toast(`Created ${text}`, `${doneIcon} ${heading}`);
-    Logger.log(`${doneIcon} Created ${text}`);
-    
-    // 3. Finally, build the name dropdown using our new destination map.
-    Logger.log('Creating links to name drop-down based on members enrollment in Survivor and/or Eliminator pools')
-    let nameChoices = [], eligibleMembers = [];
-    memberData.memberOrder.forEach(memberId => {
-      const member = memberData.members[memberId];
-      if (member && member.active) {
-        // If a destination was calculated for them, use it. Otherwise, default to the final submit page.
-        const destination = pageDestinations[memberId] || finalSubmitPage;
-        
-        // Prevent adding members who have no questions to answer
-        if (destination === finalSubmitPage && !config.pickemsInclude) return;
-        
-        nameChoices.push(nameQuestion.createChoice(member.name, destination));
-        eligibleMembers.push(member.name);
-      }
-    });
-    ss.toast(`Linked all members to their respective pages for navigation`,`🔀 MEMBERS ROUTED`);
-    Logger.log(`🔀 Linked all members to their respective pages for navigation`);
-    // Add 'New User' option if applicable
+
+    // --- The Safety Net logic (unchanged and correct) ---
+    if (nameChoices.length === 0 && config.membershipLocked) {
+      throw new Error("Form creation failed: No members are eligible...");
+    }
     if (!config.membershipLocked) {
-      const text = 'Membership is unlocked--creating a new user question';
-      Logger.log('🔓 '+ text);
-      ss.toast(text,'🔓 MEMBERSHIP UNLOCKED')
       const newUserPage = buildNewUserPage(ss, form, config, gamePlan);
       nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
-    } else {
-      const text = 'Membership is locked--no new user question added';
-      Logger.log('🔓 '+ text);
-      ss.toast(text,'🔒 MEMBERSHIP LOCKED')
     }
+    if (nameChoices.length === 0) {
+      nameChoices.push(nameQuestion.createChoice("No members eligible", finalSubmitPage));
+      form.setDescription(`⚠️ Warning: No members are currently eligible...`);
+    }
+    
+    // END NEW LOGIC
     
     Logger.log('📝 Setting Name Choices');
     nameQuestion.setChoices(nameChoices);
@@ -3954,13 +3946,32 @@ function buildFormFromGamePlan(gamePlan) {
   }  
 }
 
+function isMemberEligible(member, contestType, week) {
+  // ...
+  const livesData = member[livesKey];
+  const startWeek = fetchProperties('configuration')[`${contestType}StartWeek`] || 1;
+
+  // This check runs first. For Week 1, it correctly returns true.
+  if (week == startWeek) return true;
+
+  if (Array.isArray(livesData)) {
+    // This block runs if sL is an array.
+    const previousWeekLives = livesData[week - 2];
+    return previousWeekLives > 0;
+  } else {
+    // This block runs if sL is NOT an array (e.g., it's the number 1).
+    return livesData > 0;
+  }
+}
+
 /**
  * Adds a single, correctly filtered contest question to the form.
  */
 function addContestQuestion(form, contestType, member, isAts, startWeek, allTeamsForWeek) {
+  const startIndex = (parseInt(startWeek, 10) || 1) - 1;
   const picksKey = contestType === 'survivor' ? 'sP' : 'eP';
   const allMemberPicks = member[picksKey] || [];
-  const relevantPicks = allMemberPicks.slice(startWeek - 1).filter(team => {
+  const relevantPicks = allMemberPicks.slice(startIndex).filter(team => {
     const teamAbbr = team.split(' ')[0];
     return teamAbbr;
   });
@@ -3969,7 +3980,15 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
     const teamAbbr = team.split(' ')[0];
     return !relevantPicks.includes(teamAbbr);
   });
-  
+
+  if (!isFirstWeek) {
+    const picksKey = contestType === 'survivor' ? 'sP' : 'eP';
+    const allMemberPicks = member[picksKey] || [];
+    const startWeek = config[`${contestType.toLowerCase()}StartWeek`] || 1;
+    const relevantPicks = allMemberPicks.slice(startWeek - 1);
+    availableTeams = allTeamsForWeek.filter(team => !relevantPicks.includes(team.split(' ')[0]));
+  }
+
   const baseTitle = (contestType === 'survivor' ? '👑 ' : '💀 ') + capitalize(contestType) + (contestType === 'eliminator' ? ' Loser' + (isAts ? ' ATS' : '') + ' Pick' : ' Winner' + (isAts ? ' ATS' : '') + ' Pick');
   const uniqueTitle = `${baseTitle} (${member.name})`;
   const helpText = `Select which team you believe will ${isAts ? (contestType === 'survivor' ? 'WIN' : 'LOSE') + ' when factoring in the given spread' : (contestType === 'survivor' ? 'WIN' : 'LOSE') + ' this week'}.`;
@@ -5530,10 +5549,11 @@ function syncFormResponses(week) {
         const permanentId = generateUniqueId();
         
         memberData.memberOrder.push(permanentId);
-        memberData.members[permanentId] = createNewMember(
+        membersData.members[permanentId] = createNewMember(
           newUserName,
-          false, // New members from the form are always initially unpaid
-          week // The join week is the week of the form they submitted
+          false,
+          config,
+          week
         );
         
         nameToIdMap[nameKey] = permanentId;
@@ -5680,7 +5700,7 @@ function showFormActionsDialog(newFormsData, week) {
         .button-row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; }
         .btn { padding: 8px 15px;  font-size: 14px;  font-weight: 600;  border: none;  border-radius: 5px;  cursor: pointer;  color: white;  text-decoration: none; display: flex;  align-items: center;  justify-content: center;  gap: 5px; }
         .btn-primary { background-color: #013369; }
-        .btn-primary:hover { background-color: #2067b3; }a
+        .btn-primary:hover { background-color: #2067b3; }
         .btn-secondary { background-color: #878787; }
         .btn-secondary:hover { background-color: #A8A8A8; }
         .btn-alert { background-color: #ff913d; }
