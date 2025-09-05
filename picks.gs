@@ -2631,6 +2631,8 @@ function fetchLogos(){
   return logos;
 }
 
+// NFL OUTCOMES FUNCTIONS
+
 /**
  * The main function to launch the automated outcome import process.
  * This should be called from a menu item like "Import Scores from Live Data".
@@ -2674,9 +2676,10 @@ function launchApiOutcomeImport() {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       
       // Update the sheets with the outcome data
-      updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
-      
-      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`, ui.ButtonSet.OK);
+      let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
+      if (result) {
+        ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`,ui.ButtonSet.OK);        
+      }
     } else {
       SpreadsheetApp.getActiveSpreadsheet().toast('Import canceled.');
     }
@@ -2743,43 +2746,72 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
     SpreadsheetApp.getActiveSpreadsheet().toast('No completed games to import.');
     return;
   }
-  Logger.log(completedGames);
+
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
   const formsData = JSON.parse(docProps.getProperty('forms')) || {};
 
+  let errorMessage = '';
+
   const weeklySheet = ss.getSheetByName(`${weeklySheetPrefix}${week}`);
-  const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
-
-  // Create lookup maps for the columns in both sheets
-
-  if (config.pickemsInclude) {
-    completedGames.forEach(game => {
-      const weeklyMatchupHeaders = ss.getRangeByName(`${LEAGUE}_${week}`)?.getValues()[0] || [];
-      const weeklyMatchupMap = new Map(weeklyMatchupHeaders.map((h, i) => [h.replace(/\n/g, ' @ '), i]));
-      const colIndex = weeklyMatchupMap.get(game.shortName);
-      if (colIndex !== undefined) {
-        // --- Update the Weekly Sheet (e.g., WK1) ---
-        if (weeklySheet && config.pickemsInclude) {
-          const outcomeRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}`).getRow();
-          const marginRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}_MARGIN`).getRow();
-          weeklySheet.getRange(outcomeRow, colIndex + 1).setValue(game.winner);
-          weeklySheet.getRange(marginRow, colIndex + 1).setValue(game.margin);
+  if (weeklySheet) {
+    const weeklySheetMap = outcomeDataValidationMapping(week, formsData, `${LEAGUE}_PICKEM_OUTCOMES_${week}`);
+    const weeklySheetWinnersRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${week}`);
+    const weeklySheetMarginsRange = ss.getRangeByName(`${LEAGUE}_PICKEM_OUTCOMES_${week}_MARGIN`);
+    let weeklySheetWinners = weeklySheetWinnersRange.getValues();
+    let weeklySheetMargins = weeklySheetMarginsRange.getValues();
+    if (weeklySheetMap) {
+      completedGames.forEach(game => {
+        // Returns a map of games in the form {'AWAY @ HOME:colIndex} -- Row is 1-based for sheets placement
+        const colIndex = weeklySheetMap[game.shortName]; // Allows for the first row of map data to be first row of named range
+        if (colIndex && weeklySheetWinners[0][colIndex-1] == '') {
+          weeklySheetWinners[0][colIndex-1] = game.winner;
+        }
+        if (colIndex && weeklySheetMargins[0][colIndex-1] == '') {
+          weeklySheetMargins[0][colIndex-1] = game.margin;
+        }
+      });
+      try {
+        Logger.log(`🔄 Placing values for the winners and margins of ${completedGames.length} game(s) now.`);
+        weeklySheetWinnersRange.setValues(weeklySheetWinners);
+        weeklySheetMarginsRange.setValues(weeklySheetMargins);
+      } catch(err) {
+        try {
+          Logger.log(`⚠️ Error placing values for the weekly from games for week ${week}. Attempting to place them based on gamePlan order...`)
+          const horizontalWinners = weeklySheetWinners[0].map((value, index) => {
+            if (value == '' && completedGames[index]) {
+              return completedGames[index].winner;
+            } else {
+              return weeklySheetWinners[0][index];
+            }
+          });
+          const horizontalMargins = weeklySheetMargins[0].map((value, index) => {
+            if (value == '' && completedGames[index]) {
+              return completedGames[index].margin;
+            } else {
+              return weeklySheetMargins[0][index];
+            }
+          });
+          weeklySheetWinnersRange.setValues([horizontalWinners]);
+          weeklySheetMarginsRange.setValues([horizontalMargins]);
+          Logger.log(`✅ Backup outcome recording worked for ${completedGames.length} game(s)`);
+        } catch(err) {
+          Logger.log(`❗ Unable to place any outcomes. Manual mode recommended or rebuild WEEKLY sheet | ERROR: ${err.stack}`);
+          errorMessage += `Attempted to bring in pick 'ems sheet weekly outcomes and failed to place outcomes even with backup solution.`
         }
       }
-    });
+    }
   }
-        
-  // --- Update the Master OUTCOMES Sheet ---
+
+  const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
   if (outcomesSheet) {
-    const outcomesSheetMap = outcomesSheetMapValidations(week, formsData);
+    const outcomesSheetMap = outcomeDataValidationMapping(week, formsData, `${LEAGUE}_OUTCOMES_${week}`);
     // Find the corresponding row in the OUTCOMES sheet
     const outcomesSheetWinnersRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}`);
     const outcomesSheetMarginsRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}_MARGIN`);
     let outcomesSheetWinners = outcomesSheetWinnersRange.getValues();
     let outcomesSheetMargins = outcomesSheetMarginsRange.getValues();
     if (outcomesSheetMap) {
-      const firstRow = outcomesSheetWinnersRange.getRow();
       completedGames.forEach(game => {
         // Returns a map of games in the form {'AWAY @ HOME:rowIndex} -- Row is 1-based for sheets placement
         const rowIndex = outcomesSheetMap[game.shortName]; // Allows for the first row of map data to be first row of named range
@@ -2791,30 +2823,55 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
         }
       });
       try {
-        Logger.log(outcomesSheetWinners);
-        Logger.log(outcomesSheetMargins);
-        Logger.log(`Placing values for the winners and margins of ${completedGames.length} game(s) now.`);
+        Logger.log(`🔄 Placing values for the winners and margins of ${completedGames.length} game(s) now.`);
         outcomesSheetWinnersRange.setValues(outcomesSheetWinners);
         outcomesSheetMarginsRange.setValues(outcomesSheetMargins);
       } catch(err) {
-        Logger.log(`⚠️ Error placing values for the outcomes from games for week ${week}.`)
+        try {
+          Logger.log(`⚠️ Error placing values for the outcomes from games for week ${week}. Attempting to place them based on gamePlan order...`)
+          const verticalWinners = outcomesSheetWinners.map((value, index) => {
+            if (value[0] == '' && completedGames[index]) {
+              return [completedGames[index].winner];
+            } else {
+              return [outcomesSheetWinners[index][0]];
+            }
+          });
+          const verticalMargins = outcomesSheetMargins.map((value, index) => {
+            if (value[0] == '' && completedGames[index]) {
+              return [completedGames[index].margin];
+            } else {
+              return [outcomesSheetMargins[index][0]];
+            }
+          });
+          outcomesSheetWinnersRange.setValues(verticalWinners);
+          outcomesSheetMarginsRange.setValues(verticalMargins);
+          Logger.log(`✅ Backup outcome recording worked for ${completedGames.length} game(s)`);
+        } catch(err) {
+          Logger.log(`❗ Unable to place any outcomes. Manual mode recommended or rebuild OUTCOMES sheet | ERROR: ${err.stack}`);
+          errorMessage += `\n\nAttempted to bring in ${LEAGUE}_OUTCOMES sheet weekly outcomes and failed to place outcomes even with backup solution.`
+        }
       }
-    } else {
-      Logger.log(`⚠️ Placing values in fetched order, disregarding validations`);
     }
-  } 
+  }
+  if (errorMessage.length > 0) {
+    const ui = fetchUi();
+    ui.alert(`Outcome Import Issue`, `${errorMessage}\n\nTry again later or reach out for support.\n\nPicks ${(config.pickemsInclude && config.pickemsAts) || (config.survivorInclude && config.survivorAts) || (config.eliminatorInclude && config.eliminatorAts) ? 'and margins ' : ''} can always be manually entered.`, ui.ButtonSet.OK);
+    return false;
+  } else {
+    return true;
+  }
 }
 
 /** 
  * Function to receive infor that is used to process the existing validation in the OUTCOMES sheet and provide a map for placing values.
  */
-function outcomesSheetMapValidations(week, formData) {
+function outcomeDataValidationMapping(week, formData, namedRangeName) {
   try {
-    const namedRangeName = `${LEAGUE}_OUTCOMES_${week}`;
+    namedRangeName = namedRangeName || `${LEAGUE}_OUTCOMES_${week}`;
     const namedRange = SpreadsheetApp.getActiveSpreadsheet().getRangeByName(namedRangeName);
     
     if (!namedRange) {
-      Logger.log(`Named range "${namedRangeName}" not found`);
+      Logger.log(`❗ Named range "${namedRangeName}" not found`);
       return false;
     }
     const numRows = namedRange.getNumRows();
@@ -2834,6 +2891,7 @@ function outcomesSheetMapValidations(week, formData) {
     let found = false;
     let matchupMap = {};
     // Iterate through each cell in the named range
+    const horizontal = numRows == 1 ? true : false;
     for (let row = 1; row <= numRows; row++) {
       for (let col = 1; col <= numCols; col++) {
         const cell = namedRange.getCell(row, col);
@@ -2853,7 +2911,7 @@ function outcomesSheetMapValidations(week, formData) {
               Logger.log(`❌ Matchup "${combinedMatchup}" not found in games object`);
               allValid = false;
             } else {
-              matchupMap[combinedMatchup] = row;
+              matchupMap[combinedMatchup] = horizontal ? col : row;
               if (!found) found = true;
               // Logger.log(`✅ Matchup "${combinedMatchup}" found in games object in cell (${row},${col})`);
             }
@@ -2876,13 +2934,10 @@ function outcomesSheetMapValidations(week, formData) {
     }
     
   } catch (error) {
-    console.error(`Error validating named range: ${error.message}`);
+    Logger.log(`Error validating named range: ${error.message}`);
     return false;
   }
 }
-
-
-
 
 // ============================================================================================================================================
 // FORM FUNCTIONS
@@ -3075,7 +3130,7 @@ function executeFormLock(e) {
   // 1. Get the unique ID of the trigger that just ran.
   const triggerId = e.triggerUid;
   if (!triggerId) {
-    console.error("executeFormLock ran but could not identify its own trigger ID.");
+    Logger.log("executeFormLock ran but could not identify its own trigger ID.");
     return;
   }
   
@@ -3084,7 +3139,7 @@ function executeFormLock(e) {
   const triggerMetaProperty = docProps.getProperty('triggerMeta_' + triggerId);
   
   if (!triggerMetaProperty) {
-    console.error(`Could not find metadata for trigger ID ${triggerId}. Aborting lock.`);
+    Logger.log(`Could not find metadata for trigger ID ${triggerId}. Aborting lock.`);
     // Attempt to clean up the trigger anyway
     deleteTriggerById(triggerId);
     return;
@@ -3105,7 +3160,7 @@ function executeFormLock(e) {
 
     Logger.log(`Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
   } catch (err) {
-    console.error(`Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
+    Logger.log(`Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
     // Attempt to clean up anyway.
     deleteTriggerById(triggerId);
     docProps.deleteProperty('triggerMeta_' + triggerId);
@@ -5886,7 +5941,7 @@ function showFormActionsDialog(newFormsData, week) {
               button.disabled = false;
             }, 2000);
           }).catch(err => {
-            console.error('Failed to copy: ', err);
+            Logger.log('Failed to copy: ', err);
             prompt("Please copy this link manually:", linkToCopy);
           });
         };
