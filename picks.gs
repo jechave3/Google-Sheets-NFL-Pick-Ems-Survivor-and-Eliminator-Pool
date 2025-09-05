@@ -1500,7 +1500,7 @@ function renameMemberInDatabaseSheet(oldName, newName) {
   try {
     const dbSheet = getDatabaseSheet(); // Your existing helper to get the backend Spreadsheet
     if (!dbSheet) {
-      console.log("Database sheet not found, skipping rename operation there.");
+      Logger.log("Database sheet not found, skipping rename operation there.");
       return;
     }
 
@@ -1532,7 +1532,7 @@ function renameMemberInDatabaseSheet(oldName, newName) {
       });
     });
     
-    console.log(`Successfully performed rename operations for "${oldName}" in the backend database sheet.`);
+    Logger.log(`Successfully performed rename operations for "${oldName}" in the backend database sheet.`);
 
   } catch (error) {
     // We log this as a warning because the primary rename (in properties) succeeded.
@@ -2676,7 +2676,7 @@ function launchApiOutcomeImport() {
       // Update the sheets with the outcome data
       updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
       
-      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`,ui.ButtonSet.OK);
+      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`, ui.ButtonSet.OK);
     } else {
       SpreadsheetApp.getActiveSpreadsheet().toast('Import canceled.');
     }
@@ -3094,7 +3094,7 @@ function executeFormLock(e) {
   const formId = metadata.formId;
 
   try {
-    console.log(`Executing one-time lock for form ID: ${formId}`);
+    Logger.log(`Executing one-time lock for form ID: ${formId}`);
     
     // 3. Lock the form.
     FormApp.openById(formId).setAcceptingResponses(false);
@@ -3103,7 +3103,7 @@ function executeFormLock(e) {
     deleteTriggerById(triggerId);
     docProps.deleteProperty('triggerMeta_' + triggerId);
 
-    console.log(`Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
+    Logger.log(`Successfully executed and deleted one-time lock trigger for form ID: ${formId}`);
   } catch (err) {
     console.error(`Failed to execute lock for form ID ${formId}. Error: ${err.toString()}`);
     // Attempt to clean up anyway.
@@ -3131,7 +3131,7 @@ function setOneTimeFormLockTrigger(formId, gamePlan) {
   });
 
   if (!earliestKickoff || earliestKickoff < new Date()) {
-    console.log("Cannot set form lock trigger: earliest kickoff is in the past.");
+    Logger.log("Cannot set form lock trigger: earliest kickoff is in the past.");
     return;
   }
   
@@ -3149,7 +3149,7 @@ function setOneTimeFormLockTrigger(formId, gamePlan) {
   const metadata = { formId: formId, week: gamePlan.week };
   PropertiesService.getDocumentProperties().setProperty('triggerMeta_' + triggerId, JSON.stringify(metadata));
 
-  console.log(`Scheduled one-time form lock for ${earliestKickoff.toLocaleString()} with trigger ID ${triggerId}`);
+  Logger.log(`Scheduled one-time form lock for ${earliestKickoff.toLocaleString()} with trigger ID ${triggerId}`);
   SpreadsheetApp.getActiveSpreadsheet().toast(`Form will automatically lock at first kickoff.`);
 }
 
@@ -3350,8 +3350,7 @@ function fetchFormCreationData() {
   try {
     const docProps = PropertiesService.getDocumentProperties();
     const configuration = JSON.parse(docProps.getProperty('configuration'));
-    const earliestWeek = fetchWeek() || 1;
-    const scheduleAnalysis = analyzeScheduleData(earliestWeek);
+    const scheduleAnalysis = analyzeScheduleData(); // Can add input here to then pass along for earliest week creation if desired.
     let apiWeek = null;
     try {
       apiWeek = fetchWeek(null, true)
@@ -3387,7 +3386,7 @@ function fetchFormCreationData() {
  * @param {number} earliestWeek - The first week to include in the analysis.
  * @returns {Object} An object containing the filtered matchups and the validity summary.
  */
-function analyzeScheduleData(earliestWeek) {
+function analyzeScheduleData() {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(LEAGUE); // Assumes LEAGUE is a global const like 'NFL'
@@ -3406,7 +3405,7 @@ function analyzeScheduleData(earliestWeek) {
 
     // 1. Filter data to relevant weeks and convert to objects
     const matchups = data
-      .filter(row => row[weekCol] >= earliestWeek)
+      .filter(row => row[weekCol] >= 1) // Formerly used earliest week as input to this function and defaulted to next week after first game started
       .map(row => {
         let matchupObject = {};
         headers.forEach((header, index) => {
@@ -4037,11 +4036,11 @@ function buildFormFromGamePlan(gamePlan) {
           eligibleMembers.push(member.name);
         }
 
-        // A member is eligible for the dropdown if they have a custom page OR if pick'em is enabled.
-        if (destination !== finalSubmitPage || config.pickemsInclude) {
-          nameChoices.push(nameQuestion.createChoice(member.name, destination));
-          eligibleMembers.push(member.name);
-        }
+        // // A member is eligible for the dropdown if they have a custom page OR if pick'em is enabled.
+        // if (destination !== finalSubmitPage || config.pickemsInclude) {
+        //   nameChoices.push(nameQuestion.createChoice(member.name, destination));
+        //   eligibleMembers.push(member.name);
+        // }
       }
     });
     if (nameChoices.length === 0 && config.membershipLocked) {
@@ -4529,7 +4528,7 @@ function deleteWeeklyFetchTrigger() {
  * It provides the correct parameters to your main fetchSchedule function.
  */
 function runWeeklyFetch() {
-  console.log("Weekly auto-fetch trigger is running...");
+  Logger.log("Weekly auto-fetch trigger is running...");
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const year = fetchYear();
   const currentWeek = null; // Let fetchSchedule determine the current week
