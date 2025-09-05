@@ -1342,7 +1342,6 @@ function createNewMember(name, isPaid, config, joinWeek) {
   
   return newMember;
 }
-
  
  /**
  * Processes a rename submission. Finds the member by their
@@ -2677,7 +2676,7 @@ function launchApiOutcomeImport() {
       // Update the sheets with the outcome data
       updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
       
-      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`);
+      ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`,ui.ButtonSet.OK);
     } else {
       SpreadsheetApp.getActiveSpreadsheet().toast('Import canceled.');
     }
@@ -2744,44 +2743,144 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
     SpreadsheetApp.getActiveSpreadsheet().toast('No completed games to import.');
     return;
   }
+  Logger.log(completedGames);
   const docProps = PropertiesService.getDocumentProperties();
   const config = JSON.parse(docProps.getProperty('configuration')) || {};
-  
+  const formsData = JSON.parse(docProps.getProperty('forms')) || {};
+
   const weeklySheet = ss.getSheetByName(`${weeklySheetPrefix}${week}`);
   const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
 
   // Create lookup maps for the columns in both sheets
-  const weeklyMatchupHeaders = ss.getRangeByName(`${LEAGUE}_${week}`)?.getValues()[0] || [];
-  const weeklyMatchupMap = new Map(weeklyMatchupHeaders.map((h, i) => [h.replace(/\n/g, ' @ '), i]));
 
-  completedGames.forEach(game => {
-    const colIndex = weeklyMatchupMap.get(game.shortName);
-    if (colIndex !== undefined) {
-      // --- Update the Weekly Sheet (e.g., WK1) ---
-      if (weeklySheet && config.pickemsInclude) {
-        const outcomeRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}`).getRow();
-        const marginRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}_MARGIN`).getRow();
-        weeklySheet.getRange(outcomeRow, colIndex + 1).setValue(game.winner);
-        weeklySheet.getRange(marginRow, colIndex + 1).setValue(game.margin);
-      }
-      
-      // --- Update the Master OUTCOMES Sheet ---
-      if (outcomesSheet) {
-        // Find the corresponding row in the OUTCOMES sheet
-        const masterMatchupRange = outcomesSheet.getRange(4, (week - 1) * 2 + 1, outcomesSheet.getLastRow() - 3);
-        const gamePlanGames = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
-        const rowIndex = gamePlanGames.indexOf(game.shortName);
-
-        if (rowIndex > -1) {
-          const winnerCol = (week - 1) * 2 + 1;
-          const marginCol = winnerCol + 1;
-          outcomesSheet.getRange(rowIndex + 4, winnerCol).setValue(game.winner);
-          outcomesSheet.getRange(rowIndex + 4, marginCol).setValue(game.margin);
+  if (config.pickemsInclude) {
+    completedGames.forEach(game => {
+      const weeklyMatchupHeaders = ss.getRangeByName(`${LEAGUE}_${week}`)?.getValues()[0] || [];
+      const weeklyMatchupMap = new Map(weeklyMatchupHeaders.map((h, i) => [h.replace(/\n/g, ' @ '), i]));
+      const colIndex = weeklyMatchupMap.get(game.shortName);
+      if (colIndex !== undefined) {
+        // --- Update the Weekly Sheet (e.g., WK1) ---
+        if (weeklySheet && config.pickemsInclude) {
+          const outcomeRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}`).getRow();
+          const marginRow = ss.getRangeByName(`${LEAGUE}_PICKEMS_OUTCOMES_${week}_MARGIN`).getRow();
+          weeklySheet.getRange(outcomeRow, colIndex + 1).setValue(game.winner);
+          weeklySheet.getRange(marginRow, colIndex + 1).setValue(game.margin);
         }
       }
+    });
+  }
+        
+  // --- Update the Master OUTCOMES Sheet ---
+  if (outcomesSheet) {
+    const outcomesSheetMap = outcomesSheetMapValidations(week, formsData);
+    // Find the corresponding row in the OUTCOMES sheet
+    const outcomesSheetWinnersRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}`);
+    const outcomesSheetMarginsRange = ss.getRangeByName(`${LEAGUE}_OUTCOMES_${week}_MARGIN`);
+    let outcomesSheetWinners = outcomesSheetWinnersRange.getValues();
+    let outcomesSheetMargins = outcomesSheetMarginsRange.getValues();
+    if (outcomesSheetMap) {
+      const firstRow = outcomesSheetWinnersRange.getRow();
+      completedGames.forEach(game => {
+        // Returns a map of games in the form {'AWAY @ HOME:rowIndex} -- Row is 1-based for sheets placement
+        const rowIndex = outcomesSheetMap[game.shortName]; // Allows for the first row of map data to be first row of named range
+        if (rowIndex && outcomesSheetWinners[rowIndex-1][0] == '') {
+          outcomesSheetWinners[rowIndex-1][0] = game.winner;
+        }
+        if (rowIndex && outcomesSheetMargins[rowIndex-1][0] == '') {
+          outcomesSheetMargins[rowIndex-1][0] = game.margin;
+        }
+      });
+      try {
+        Logger.log(outcomesSheetWinners);
+        Logger.log(outcomesSheetMargins);
+        Logger.log(`Placing values for the winners and margins of ${completedGames.length} game(s) now.`);
+        outcomesSheetWinnersRange.setValues(outcomesSheetWinners);
+        outcomesSheetMarginsRange.setValues(outcomesSheetMargins);
+      } catch(err) {
+        Logger.log(`⚠️ Error placing values for the outcomes from games for week ${week}.`)
+      }
+    } else {
+      Logger.log(`⚠️ Placing values in fetched order, disregarding validations`);
     }
-  });
+  } 
 }
+
+/** 
+ * Function to receive infor that is used to process the existing validation in the OUTCOMES sheet and provide a map for placing values.
+ */
+function outcomesSheetMapValidations(week, formData) {
+  try {
+    const namedRangeName = `${LEAGUE}_OUTCOMES_${week}`;
+    const namedRange = SpreadsheetApp.getActiveSpreadsheet().getRangeByName(namedRangeName);
+    
+    if (!namedRange) {
+      Logger.log(`Named range "${namedRangeName}" not found`);
+      return false;
+    }
+    const numRows = namedRange.getNumRows();
+    const numCols = namedRange.getNumColumns();
+    
+    Logger.log(`🔍 Checking named range: ${namedRangeName} (${numRows}x${numCols} cells)`);
+    const games = formData[week]?.gamePlan?.games;
+    if (!games) {
+      Logger.log(`❌ No games found in formData[${week}].gamePlan.games`);
+      return false;
+    }
+    const gamesArray = games.map(contest => {
+      return `${contest.awayTeam} @ ${contest.homeTeam}`;
+    })
+    
+    Logger.log(`📋 These matchup exist for week ${week}: ${gamesArray}`);    
+    let found = false;
+    let matchupMap = {};
+    // Iterate through each cell in the named range
+    for (let row = 1; row <= numRows; row++) {
+      for (let col = 1; col <= numCols; col++) {
+        const cell = namedRange.getCell(row, col);
+        
+        // Get data validation for this cell
+        const validation = cell.getDataValidation();
+        
+        if (validation) {
+          const criteria = validation.getCriteriaValues();
+          
+          if (criteria && criteria.length >= 2) {
+            const firstOption = criteria[0][0];
+            const secondOption = criteria[0][1];
+            
+            const combinedMatchup = `${firstOption} @ ${secondOption}`;
+            if (!gamesArray.includes(combinedMatchup)) {
+              Logger.log(`❌ Matchup "${combinedMatchup}" not found in games object`);
+              allValid = false;
+            } else {
+              matchupMap[combinedMatchup] = row;
+              if (!found) found = true;
+              // Logger.log(`✅ Matchup "${combinedMatchup}" found in games object in cell (${row},${col})`);
+            }
+          } else {
+            Logger.log(`⚠️ Cell (${row},${col}): Data validation found but insufficient criteria`);
+            allValid = false;
+          }
+        } else {
+          Logger.log(`⛔ Cell (${row},${col}): No data validation found`);
+        }
+      }
+    }    
+    if (found) {
+      Logger.log(`✅ Map created with these values: ${JSON.stringify(matchupMap)}`);
+      Logger.log(`↩️ Returning matchup map for placing game outcomes within the OUTCOMES sheet`);
+      return matchupMap;
+    } else {
+      Logger.log(`🚫 Unable to identify any named ranges within the provided week for the OUTCOME sheet`);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error(`Error validating named range: ${error.message}`);
+    return false;
+  }
+}
+
 
 
 
@@ -3805,115 +3904,171 @@ function buildFormFromGamePlan(gamePlan) {
 
     const finalSubmitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
     
-    // NEW LOGIC
-    const pageDestinations = {};
+    // --- Build Survivor/Eliminator Pages ---
+    const pageDestinations = {}; // Will map memberId -> destination page
     
+    // Report on members before diving in:
     memberData.memberOrder.forEach(memberId => {
       const member = memberData.members[memberId];
       Logger.log(`🔹${member.name} Data\nSurvivor Lives: ${member.sL}\nEliminator Lives: ${member.eL}`);
     });
-    
+
     const survivorIsActive = !config.survivorDone && config.survivorInclude && week >= config.survivorStartWeek;
     const eliminatorIsActive = !config.eliminatorDone && config.eliminatorInclude && week >= config.eliminatorStartWeek;
-    const sStartWeek = parseInt(config.survivorStartWeek, 10);
-    const eStartWeek = parseInt(config.eliminatorStartWeek, 10);
 
-    // A. Handle First Week of a Contest (Common Page)
+
     let firstWeekContestPage = null;
-    if ((survivorIsActive && week === sStartWeek) || (eliminatorIsActive && week === eStartWeek)) {
+    if (week === parseInt(config.survivorStartWeek, 10) || week === parseInt(config.eliminatorStartWeek, 10)) {
+      // Create ONE common page for all existing users for the first week.
       firstWeekContestPage = form.addPageBreakItem().setTitle('Contest Picks');
       firstWeekContestPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
       
-      if (survivorIsActive && week === sStartWeek) {
-        addContestQuestion(form, 'survivor', {}, config, gamePlan); // Pass empty member for generic question
+      if (survivorIsActive && week === parseInt(config.survivorStartWeek, 10)) {
+        addContestQuestion(form, 'survivor', {}, config, gamePlan); // Pass empty member object
       }
-      if (eliminatorIsActive && week === eStartWeek) {
-        addContestQuestion(form, 'eliminator', {}, config, gamePlan); // Pass empty member for generic question
+      if (eliminatorIsActive && week === parseInt(config.eliminatorStartWeek, 10)) {
+        addContestQuestion(form, 'eliminator', {}, config, gamePlan); // Pass empty member object
       }
     }
 
-    // B. Handle Subsequent Weeks (Individual Pages)
-    if (week > 1 && (survivorIsActive || eliminatorIsActive)) {
-        let allSurvivorTeamsForWeek = survivorIsActive ? buildTeamList(gamePlan, config, config.survivorAts) : [];
-        let allEliminatorTeamsForWeek = eliminatorIsActive ? buildTeamList(gamePlan, config, config.eliminatorAts) : [];
-
+    if (week > 1) {
+      const sLivesIndex = week - 2; // e.g., for Week 2, check index 0.
+      const eLivesIndex = week - 2;
+      const sLS = config.survivorLives;
+      const eLS = config.eliminatorLives;
+      let allSurvivorTeamsForWeek = buildTeamList(gamePlan, config, config.survivorAts);
+      let allEliminatorTeamsForWeek = buildTeamList(gamePlan, config, config.eliminatorAts)
+      // 1. First, find members active in BOTH contests and create their combined page.
+      if (survivorIsActive && eliminatorIsActive) {
+        ss.toast(`Creating questions for members who are in both survivor and eliminator for week ${week}`,`👑&💀 SURVIVOR AND ELIMINATOR`);
+        Logger.log('👑&💀 Creating possible destinations for instances where both Survivor and Eliminator are both active')
         memberData.memberOrder.forEach(memberId => {
-            const member = memberData.members[memberId];
-
-            // --- [THE DEFINITIVE FIX] ---
-            // This eligibility check works for BOTH old (number) and new (array) data formats.
-            const isEligibleForSurvivor = survivorIsActive && isMemberEligible(member, 'survivor', week);
-            const isEligibleForEliminator = eliminatorIsActive && isMemberEligible(member, 'eliminator', week);
+          
+          const member = memberData.members[memberId];
+          if (member && member.active && member.sL[sLivesIndex] > 0 && member.eL[eLivesIndex] > 0) {
+            let survivorHelp = sLS == 1 ? `One Survivor Life: ${createLivesString(member.sL[sLivesIndex],sLS)}` : `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex] < sLS ? member.sL[sLivesIndex] + ' remaining' : 'all remaining'})`;
+            let eliminatorHelp = eLS == 1 ? `One Eliminator Life: ${createLivesString(member.eL[eLivesIndex],eLS)}` : `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex] < eLS ? member.eL[eLivesIndex] + ' remaining' : 'all remaining'})`;
+            const helpText = `${survivorHelp}  |  ${eliminatorHelp}`;
+            const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Picks`).setHelpText(helpText);
+            combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
             
-            if (isEligibleForSurvivor && isEligibleForEliminator) {
-                // ... Your correct logic to create a combined page ...
-                const combinedPage = form.addPageBreakItem().setTitle(`${member.name}'s Contest Picks`);
-                combinedPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
-                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
-                pageDestinations[memberId] = combinedPage;
-            } else if (isEligibleForSurvivor) {
-                // ... Your correct logic to create a survivor-only page ...
-                const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`);
-                survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-                addContestQuestion(form, 'survivor', member, config, gamePlan, allSurvivorTeamsForWeek);
-                pageDestinations[memberId] = survivorPage;
-            } else if (isEligibleForEliminator) {
-                // ... Your correct logic to create an eliminator-only page ...
-                const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`);
-                eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
-                addContestQuestion(form, 'eliminator', member, config, gamePlan, allEliminatorTeamsForWeek);
-                pageDestinations[memberId] = eliminatorPage;
-            }
+            // Add both questions to this single page
+            addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
+            addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
+            
+            pageDestinations[memberId] = combinedPage; // Assign their destination
+            Logger.log(`👑&💀 Questions for ${member.name} created.`);
+          }
+          
         });
+      }
+      ss.toast(`Created questions for members who are in both survivor and eliminator for week ${week}`,`✅&✅ SURVIVOR/ELIMINATOR DONE`);
+      ss.toast(`✅&✅ Created questions for members who are in both survivor and eliminator for week ${week}`);
+      // 2. Next, handle members active in ONLY ONE contest.
+      
+      let text = `questions for members who are in both survivor and eliminator for week ${week}`;
+      let heading = `SURVIVOR OR ELIMINATOR`;
+      let icon = `👑/💀`;
+      let doneIcon = `✅/✅`
+      if (config.survivorInclude && !config.eliminatorInclude) {
+        text = `questions for members who are in survivor for week ${week}`;
+        heading = `SURVIVOR`;
+        icon = `👑`;
+        doneIcon = `✅`
+      } if (!config.survivorInclude && config.eliminatorInclude) {
+        text = `questions for members who are in eliminator for week ${week}`;
+        heading = `ELIMINATOR`;
+        icon = `💀`;
+        doneIcon = `✅`
+      }
+      ss.toast(`Creating ${text}`, `${icon} ${heading}`);
+      Logger.log(`${icon} Creating ${text}`);
+      memberData.memberOrder.forEach(memberId => {
+        // Skip members we've already handled
+        if (pageDestinations[memberId]) return;
+
+        const member = memberData.members[memberId];
+        if (member && member.active) {
+          if (survivorIsActive && member.sL[sLivesIndex] > 0) {
+            const helpText = `Survivor Lives: ${createLivesString(member.sL[sLivesIndex],sLS)} (${member.sL[sLivesIndex]})`;
+            const survivorPage = form.addPageBreakItem().setTitle(`${member.name}'s Survivor Pick`).setHelpText(helpText);
+            survivorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+            addContestQuestion(form, 'survivor', member, config.survivorAts, config.survivorStartWeek, allSurvivorTeamsForWeek);
+            pageDestinations[memberId] = survivorPage;
+            Logger.log(`👑 Question for ${member.name} created.`);
+          } else if (eliminatorIsActive && member.eL[eLivesIndex] > 0) {
+            const helpText = `Eliminator Lives: ${createLivesString(member.eL[eLivesIndex],eLS)} (${member.eL[eLivesIndex]})`;
+            const eliminatorPage = form.addPageBreakItem().setTitle(`${member.name}'s Eliminator Pick`).setHelpText(helpText);
+            eliminatorPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
+            addContestQuestion(form, 'eliminator', member, config.eliminatorAts, config.eliminatorStartWeek, allEliminatorTeamsForWeek);
+            pageDestinations[memberId] = eliminatorPage;
+            Logger.log(`💀 Question for ${member.name} created.`);
+          } else {
+            Logger.log(`❌ ${member.name} Is out or ineligible for ${heading.toLowerCase()}.`)
+          }
+        }
+      });
+      ss.toast(`Created ${text}`, `${doneIcon} ${heading}`);
+      Logger.log(`${doneIcon} Created ${text}`);
     }
     
-    // --- 3. Build the Name Dropdown (with corrected logic) ---
-    Logger.log('Creating links for name drop-down...');
-    let nameChoices = [];
-    const eligibleMembers = [];
-
+    // 3. Finally, build the name dropdown using our new destination map.
+    Logger.log('Creating links to name drop-down based on members enrollment in Survivor and/or Eliminator pools')
+    let nameChoices = [], eligibleMembers = [];
     memberData.memberOrder.forEach(memberId => {
       const member = memberData.members[memberId];
       if (member && member.active) {
-        let destination = finalSubmitPage;
+        let destination;
         let isEligible = false;
 
-        if (week === sStartWeek || week === eStartWeek) {
-          // It's the first week of a contest, everyone active is eligible.
-          isEligible = (survivorIsActive && week === sStartWeek) || (eliminatorIsActive && week === eStartWeek);
-          if (isEligible) destination = firstWeekContestPage;
+        // [THE FIX B] Determine eligibility and destination
+        if (week === parseInt(config.survivorStartWeek, 10) || week === parseInt(config.eliminatorStartWeek, 10)) {
+          // It's the first week, everyone is eligible and goes to the common page.
+          isEligible = survivorIsActive || eliminatorIsActive;
+          destination = isEligible ? firstWeekContestPage : finalSubmitPage;
         } else {
-          // For later weeks, eligibility is determined by having a custom page.
-          if (pageDestinations[memberId]) {
-            isEligible = true;
-            destination = pageDestinations[memberId];
-          }
+          // For later weeks, use the page map created by your individual page logic.
+          destination = pageDestinations[memberId] || finalSubmitPage;
+          isEligible = (destination !== finalSubmitPage);
         }
 
-        // Add the member to the dropdown if they are eligible for any game.
         if (isEligible || config.pickemsInclude) {
+          nameChoices.push(nameQuestion.createChoice(member.name, destination));
+          eligibleMembers.push(member.name);
+        }
+
+        // A member is eligible for the dropdown if they have a custom page OR if pick'em is enabled.
+        if (destination !== finalSubmitPage || config.pickemsInclude) {
           nameChoices.push(nameQuestion.createChoice(member.name, destination));
           eligibleMembers.push(member.name);
         }
       }
     });
-
-    // --- The Safety Net logic (unchanged and correct) ---
     if (nameChoices.length === 0 && config.membershipLocked) {
-      throw new Error("Form creation failed: No members are eligible...");
+      // Throw a user-friendly error instead of letting the script crash.
+      throw new Error("Form creation failed: No members are eligible to make picks for this week, and membership is locked.");
     }
+    
+    ss.toast(`Linked all members to their respective pages for navigation`,`🔀 MEMBERS ROUTED`);
+    Logger.log(`🔀 Linked all members to their respective pages for navigation`);
+    // Add 'New User' option if applicable
     if (!config.membershipLocked) {
+      const text = 'Membership is unlocked--creating a new user question';
+      Logger.log('🔓 '+ text);
+      ss.toast(text,'🔓 MEMBERSHIP UNLOCKED')
       const newUserPage = buildNewUserPage(ss, form, config, gamePlan);
       nameChoices.unshift(nameQuestion.createChoice(('✏️ NEW USER'), newUserPage));
+    } else {
+      const text = 'Membership is locked--no new user question added';
+      Logger.log('🔓 '+ text);
+      ss.toast(text,'🔒 MEMBERSHIP LOCKED')
     }
+    
     if (nameChoices.length === 0) {
-      nameChoices.push(nameQuestion.createChoice("No members eligible", finalSubmitPage));
-      form.setDescription(`⚠️ Warning: No members are currently eligible...`);
+        nameChoices.push(nameQuestion.createChoice("No members eligible", finalSubmitPage));
+        form.setDescription(`⚠️ Warning: No members are currently eligible to make picks. Please check Member Management or unlock membership.`);
     }
-    
-    // END NEW LOGIC
-    
+
     Logger.log('📝 Setting Name Choices');
     nameQuestion.setChoices(nameChoices);
     ss.toast('Set all choices for name question drop-down','📝 NAME CHOICES SET');
@@ -3946,24 +4101,6 @@ function buildFormFromGamePlan(gamePlan) {
   }  
 }
 
-function isMemberEligible(member, contestType, week) {
-  // ...
-  const livesData = member[livesKey];
-  const startWeek = fetchProperties('configuration')[`${contestType}StartWeek`] || 1;
-
-  // This check runs first. For Week 1, it correctly returns true.
-  if (week == startWeek) return true;
-
-  if (Array.isArray(livesData)) {
-    // This block runs if sL is an array.
-    const previousWeekLives = livesData[week - 2];
-    return previousWeekLives > 0;
-  } else {
-    // This block runs if sL is NOT an array (e.g., it's the number 1).
-    return livesData > 0;
-  }
-}
-
 /**
  * Adds a single, correctly filtered contest question to the form.
  */
@@ -3980,7 +4117,7 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
     const teamAbbr = team.split(' ')[0];
     return !relevantPicks.includes(teamAbbr);
   });
-
+  
   if (!isFirstWeek) {
     const picksKey = contestType === 'survivor' ? 'sP' : 'eP';
     const allMemberPicks = member[picksKey] || [];
@@ -4412,14 +4549,22 @@ function runWeeklyFetch() {
  */
 function getFormImportData(week) {
   try {
-    week = week || fetchWeek();
-    // 1. Run sync first to get the latest respondent metadata.
-    const syncResult = syncFormResponses(week);
-    // 2. Fetch the clean, final data needed for the panel.
     const docProps = PropertiesService.getDocumentProperties();
     const formsData = JSON.parse(docProps.getProperty('forms'));
     const memberData = JSON.parse(docProps.getProperty('members'));
-
+    let week = 1;
+    if (formsData) {
+      week = week || Math.max(...Object.keys(formsData).map(key => parseInt(key)));
+      Logger.log(week);
+    }
+    // 1. Run sync first to get the latest respondent metadata.
+    let syncResult;
+    try {
+      syncResult = syncFormResponses(week);
+    } catch (err) {
+      Logger.log(`Week ${week} not created yet or unavailable, moving on to panel loading.`)
+    }
+    // 2. Fetch the clean, final data needed for the panel.
     const config = JSON.parse(docProps.getProperty('configuration'));
     
     const allCreatedWeeks = Object.keys(formsData).map(Number).sort((a,b) => a-b);
@@ -4427,7 +4572,8 @@ function getFormImportData(week) {
     const gamePlan = formsData[week]?.gamePlan;
 
     if (!gamePlan) {
-      throw new Error(`Could not find a 'gamePlan' for Week ${week}.`);
+      gamePlan = {};
+      Logger.log(`It appears no gamePlans exist yet for forms. Are you sure you've created a form already?`)
     }
 
     // 3. Determine which games are upcoming.
@@ -4468,7 +4614,7 @@ function launchFormImport() {
 }
 
 /**
- * [DEFINITIVE WORKER] Imports all processed picks into the correct weekly
+ * Imports all processed picks into the correct weekly
  * pick'em sheet, survivor sheet, and eliminator sheet.
  *
  * @param {number} week The week to import.
@@ -4484,7 +4630,7 @@ function executePickImport(week, importOnlyStartedGames) {
   let formsData = JSON.parse(docProps.getProperty('forms')) || {};
   const databaseSheet = getDatabaseSheet();
   const responseSheet = databaseSheet.getSheetByName(`WK${week}`);
-
+  
   // Parse the latest, de-duplicated picks from the response sheet.
   const parsedPicks = parseAllPicksFromSheet(responseSheet, memberData);
   // --- 2. Handle Pick'em Sheet Population ---
@@ -4569,40 +4715,48 @@ function executePickImport(week, importOnlyStartedGames) {
       picksRange.setValues(picksData);
       tiebreakerRange.setValues(tiebreakers);
       commentRange.setValues(comments);
-      const text = `✅ Successfully imported Pick 'Em data into week '${week}' sheet.`;
-      Logger.log(text);
-      ss.toast(text,`PICK 'EMS IMPORT`)
+      const text = `Successfully imported Pick 'Em data into week '${week}' sheet.`;
+      Logger.log(`✅ ${text}`);
+      ss.toast(text,`✅ PICK 'EMS IMPORTED`)
       if (!config.initialized) {
         const ui = fetchUi();
-        let prompt = ui.alert('Create all accessory sheets now?', ui.ButtonSet.OK_CANCEL);
-        if (prompt == "OK") {
+        let prompt = ui.alert(`Season-Long Tracking Sheets Creation`,'Would you like to create all additional tracking sheets now?\n\nThis can be done later via the "Picks" > "Utilities" menu.', ui.ButtonSet.YES_NO);
+        if (prompt == "YES") {
           try {
             setupSheets();
           } catch (err) {
             ss.toast('Issue creating setup sheets, run again from the utilities menu');
             Logger.logger('Issue creating setup sheets | ERROR: ' + err.stack);
           }
-          ss.toast(`✅ Successfully configured all other sheets.`, 'SETUP SHEETS SUCCESS');
+          ss.toast(`Successfully configured all other sheets.`, '✅ SETUP SHEETS SUCCESS');
           config.initialized = true;
           saveProperties('configuration',config);
         } else {
-          ss.toast(`❎ Declined setup of all other sheets, try again via the "Utilities" menu later.`);
+          ss.toast(`Declined setup of all other sheets, try again via the "Picks" > "Utilities" menu later.`,`❎ NO SETUP SHEETS`);
         }
       }
     } catch (err) {
-      const text = `❗ Failed to import Pick 'Em data into week '${week}' sheet.`;
-      Logger.log(text + ' | ERROR: ' + err.stack);
-      ss.toast(text,`PICK 'EMS FAILED`)
+      const text = `Failed to import Pick 'Em data into week '${week}' sheet.`;
+      Logger.log(`${text} | ERROR: ${err.stack}`);
+      ss.toast(text,`❗  PICK 'EMS FAILED`)
 
     }
   }
-
-  // --- 5. Populate Survivor and Eliminator Sheets ---
-  if (config.survivorInclude && week >= config.survivorStartWeek) {
-    populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
-  }
-  if (config.eliminatorInclude && week >= config.eliminatorStartWeek) {
-    populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
+  if (!importOnlyStartedGames) {
+    // --- 5. Populate Survivor and Eliminator Sheets ---
+    if (config.survivorInclude && week >= config.survivorStartWeek) {
+      populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'survivor');
+    }
+    if (config.eliminatorInclude && week >= config.eliminatorStartWeek) {
+      populateSurvElimSheet(ss, parsedPicks, memberData, config, formsData[week]?.gamePlan, week, 'eliminator');
+    }
+  } else {
+    const title = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ? `NO SURVIVOR/ELMINATOR YET` : (config.survivorInclude && week >= config.survivorStartWeek) ? `NO SURVIVOR YET` : `NO ELIMINATOR YET`;
+    const notification = ((config.survivorInclude && week >= config.survivorStartWeek) && (config.eliminatorInclude && week >= config.eliminatorStartWeek)) ?
+      `Survivor and Eliminator not imported: user declined to import all matchups.` : (config.survivorInclude && week >= config.survivorStartWeek) ? 
+      `Survivor not imported: user declined to import all matchups.` : `Eliminator not imported: user declined to import all matchups.`;
+    Logger.log(`❎ ${notification}`);
+    ss.toast(notification,`❎ ${title}`);    
   }
   
   // Updates the Outcomes sheet to reflect the games that were actually being evaluated by the form, resets conditional formatting and data validation rules, then checks if Pick 'Ems present, whether any values were in place on the Outcomes sheet already and replaces them after otherwise putting a connection in place back to the weekly sheet
@@ -4623,6 +4777,7 @@ function executePickImport(week, importOnlyStartedGames) {
 
   return { success: true, message: `✅ Picks for week ${week} have been successfully imported!` };
 }
+
 
 // You will also need this small helper function (modified from a previous version)
 function getStartedGames() {
@@ -4908,41 +5063,44 @@ function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, we
     
     // Widen the column for this week to accommodate spreads.
     const weekColumn = parseInt(week) + 4;
-    if (isAts) sheet.setColumnWidth(weekColumn, 68);
+    if (isAts) { 
+      sheet.setColumnWidth(weekColumn, 68);
+    } else {
+      sheet.setColumnWidth(weekColumn, 42);
+    }
 
-    const nameToIdMap = new Map();
+    const nameToIdObject = {};
     if (memberData && memberData.members) {
       for (const id in memberData.members) {
         const member = memberData.members[id];
         if (member && member.name) {
-          nameToIdMap.set(member.name.toString().trim().toLowerCase(), id);
+          // Use bracket notation to set key-value pairs
+          nameToIdObject[member.name.toString().trim().toLowerCase()] = id;
         }
       }
     }
-
     // 2. Now, create the final map we need by reading the sheet: { id -> rowIndex }
-    const memberIdToRowMap = new Map();
+    const memberIdToRowMap = {};
     ss.getRangeByName(`${sheetName}_NAMES`).getValues().flat().forEach((nameOnSheet, index) => {
       // Find the official ID for the name on the sheet using our case-insensitive map.
-      const memberId = nameToIdMap.get(nameOnSheet.toString().trim().toLowerCase());
+      const memberId = nameToIdObject[nameOnSheet.toString().trim().toLowerCase()];
       if (memberId) {
         // If we found a match, create the link between the ID and its row on the sheet.
-        memberIdToRowMap.set(memberId, index); // +2 for 0-based index and header row
+        memberIdToRowMap[memberId] = index; // +2 for 0-based index and header row
       }
     });
-    
     // --- The rest of your function can now work reliably --
     const dataRange = ss.getRangeByName(`${sheetName}_PICKS`);
     const writeRange = sheet.getRange(2,weekColumn,dataRange.getNumRows(),1)
     let writeArray = Array(dataRange.getNumRows()).fill(['']);
     for (const memberId in parsedPicks) {
-      writeArray[memberIdToRowMap.get(memberId)][0] = parsedPicks[memberId]?.[contestType];
+      writeArray[memberIdToRowMap[memberId]] = [parsedPicks[memberId]?.[contestType]] || [''];
     }
     writeRange.setValues(writeArray);
     
-    const text = `✅ Successfully populated ${sheetName} sheet for Week ${week}.`;
-    Logger.log(text);
-    ss.toast(text,`${sheetName} PICK IMPORT SUCCESS`);
+    const text = `Successfully populated ${sheetName} sheet for Week ${week}.`;
+    Logger.log(`✅ ${text}`);
+    ss.toast(text,`✅ ${sheetName} IMPORTED`);
     return true;
   } catch (err) {
     const text = `❗ Failed to populated ${sheetName} sheet for Week ${week}.`;
@@ -4951,8 +5109,9 @@ function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, we
   }
 }
 
+
 /**
- * [NEW & EFFICIENT] Updates an existing Survivor/Eliminator sheet with the latest
+ * Updates an existing Survivor/Eliminator sheet with the latest
  * data for all members after an outcome has been processed.
  *
  * @param {Sheet} ss The active Spreadsheet object.
@@ -5553,7 +5712,7 @@ function syncFormResponses(week) {
           newUserName,
           false,
           config,
-          week
+          week // The join week is the week of the form they submitted
         );
         
         nameToIdMap[nameKey] = permanentId;
