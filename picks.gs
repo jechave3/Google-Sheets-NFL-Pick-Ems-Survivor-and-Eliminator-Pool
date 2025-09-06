@@ -2640,15 +2640,12 @@ function fetchLogos(){
 function launchApiOutcomeImport() {
   const ui = SpreadsheetApp.getUi();
   try {
-    // --- 1. Fetch all necessary data from properties & API ---
     const docProps = PropertiesService.getDocumentProperties();
     const formsData = JSON.parse(docProps.getProperty('forms') || '{}');
     
-    // Fetch the live API data
     const apiData = JSON.parse(UrlFetchApp.fetch(SCOREBOARD).getContentText());
     const apiEvents = apiData.events || [];
     
-    // Determine the current week from the API
     const apiWeek = apiData.week.number;
     const apiSeasonType = apiData.season.type; // 2 for regular, 3 for post
     if (apiSeasonType == 3) apiWeek = apiWeek + REGULAR_SEASON;
@@ -2658,35 +2655,33 @@ function launchApiOutcomeImport() {
       throw new Error(`Could not find a game plan for the current API week (${apiWeek}). Please create the form for this week first.`);
     }
 
-    // --- 2. Parse and categorize the API games ---
     const outcomeAnalysis = parseApiEvents(apiEvents, gamePlan);
 
-    // --- 3. Build the confirmation message ---
-    let summary = (outcomeAnalysis.post.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
-    summary += `✅ Games Finished: ${outcomeAnalysis.post.length}\n`;
-    summary += `⏳ Games In Progress: ${outcomeAnalysis.in.length}\n`;
-    summary += `🚫 Games Not Started: ${outcomeAnalysis.pre.length}`;
-    if (outcomeAnalysis.post.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
+    let summary = (outcomeAnalysis.complete.length == 0 ? `Here is the current status of the games included in your slate this week ${apiWeek}\n\n`:`This will import outcomes for week ${apiWeek}.\n\n`);
+    summary += `✅ Games Finished: ${outcomeAnalysis.complete.length}\n`;
+    summary += `⏳ Games In Progress: ${outcomeAnalysis.active.length}\n`;
+    outcomeAnalysis.postponed.length > 0 ? summary += `🕘 Games Postponed: ${outcomeAnalysis.postponed.length}` : null;
+    summary += `🚫 Games Not Started: ${outcomeAnalysis.pregame.length}`;
+    outcomeAnalysis.unknown.length > 0 ? summary += `❓ Games Unknown: ${outcomeAnalysis.unknown.length} (no clear status, manual input recommended)` : null;
+    if (outcomeAnalysis.complete.length > 0) summary += "\n\nDo you want to import the results for the finished games now?";
 
-
-    const response = ui.alert(outcomeAnalysis.post.length == 0 ? 'No Completed Games Yet':'Confirm Outcome Import', summary, outcomeAnalysis.post.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
+    const response = ui.alert(outcomeAnalysis.complete.length == 0 ? '⭕ No Completed Games Yet':'👍 Confirm Importing Games', summary, outcomeAnalysis.complete.length === 0 ? ui.ButtonSet.OK : ui.ButtonSet.YES_NO);
 
     if (response === ui.Button.YES) {
-      // --- 4. If confirmed, execute the import ---
       const ss = SpreadsheetApp.getActiveSpreadsheet();
-      
-      // Update the sheets with the outcome data
-      let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.post, gamePlan);
+      let result = updateSheetsWithApiOutcomes(ss, apiWeek, outcomeAnalysis.complete, gamePlan);
       if (result) {
-        ui.alert('Success!', `Successfully imported outcomes for ${outcomeAnalysis.post.length} completed games for Week ${apiWeek}.`,ui.ButtonSet.OK);        
+        ui.alert('✔️ Success!', `Imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`,ui.ButtonSet.OK);
+        Logger.log(`✔️ Successfully imported outcomes for ${outcomeAnalysis.complete.length} completed games for week ${apiWeek}.`);
       }
     } else {
-      SpreadsheetApp.getActiveSpreadsheet().toast('Import canceled.');
+      SpreadsheetApp.getActiveSpreadsheet().toast(`Import of week ${apiWeek} outcomes canceled by user.`,`🚫 IMPORT CANCELED`);
+      Logger.log('🚫 Import canceled by user.');
     }
 
-  } catch (e) {
-    ui.alert('Error', `An error occurred: ${e.message}`, ui.ButtonSet.OK);
-    Logger.log("launchApiOutcomeImport Error: " + e.stack);
+  } catch (err) {
+    ui.alert('Error', `An error occurred: ${err.message}`, ui.ButtonSet.OK);
+    Logger.log("launchApiOutcomeImport Error: " + err.stack);
   }
 }
 
@@ -2698,38 +2693,50 @@ function launchApiOutcomeImport() {
  * @returns {Object} An object containing categorized game outcomes.
  */
 function parseApiEvents(apiEvents, gamePlan) {
+  const statusMap = {
+    'STATUS_SCHEDULED':'pregame',
+    'STATUS_IN_PROGRESS':'active',
+    'STATUS_POSTPONED':'postponed',
+    'STATUS_FINAL':'complete'
+    }
   const analysis = {
-    pre: [],
-    in: [],
-    post: []
+    pregame: [],
+    active: [],
+    postponed: [],
+    complete: [],
+    unknown: []
   };
-
   const gamePlanMatchups = new Set(gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`));
 
   apiEvents.forEach(event => {
-    // Only process events that are part of our official game plan
-    if (gamePlanMatchups.has(event.shortName)) {
-      const status = event.status.type.state;
-      
+    const eventName = event.shortName.replace(`VS`,`@`); // Case of neutral site a VS is used
+    if (gamePlanMatchups.has(eventName)) {
+      const status = statusMap[event.status.type.name];
       const homeTeam = event.competitions[0].competitors.find(c => c.homeAway === 'home');
       const awayTeam = event.competitions[0].competitors.find(c => c.homeAway === 'away');
 
       const gameData = {
-        shortName: event.shortName,
+        shortName: eventName,
         homeScore: parseInt(homeTeam.score, 10),
         awayScore: parseInt(awayTeam.score, 10)
       };
 
-      if (status === 'post') {
+      if (status === 'complete') {
         // Game is finished, determine winner and margin
         gameData.winner = (gameData.homeScore > gameData.awayScore) ? homeTeam.team.abbreviation : awayTeam.team.abbreviation;
+        gameData.loser = (gameData.homeScore < gameData.awayScore) ? homeTeam.team.abbreviation : awayTeam.team.abbreviation;
         if (gameData.homeScore === gameData.awayScore) gameData.winner = 'TIE';
+        if (gameData.homeScore === gameData.awayScore) gameData.loser = 'TIE';
         gameData.margin = Math.abs(gameData.homeScore - gameData.awayScore);
-        analysis.post.push(gameData);
-      } else if (status === 'in') {
-        analysis.in.push(gameData);
-      } else { // 'pre'
-        analysis.pre.push(gameData);
+        analysis.complete.push(gameData);
+      } else if (status === 'postponed') {
+        analysis.postponed.push(gameData);
+      } else if (status === 'active') {
+        analysis.active.push(gameData);
+      } else if (status === 'pregame') {
+        analysis.pregame.push(gameData);
+      } else {
+        analysis.unknown.push(gameData);
       }
     }
   });
@@ -2865,7 +2872,7 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
 /** 
  * Function to receive infor that is used to process the existing validation in the OUTCOMES sheet and provide a map for placing values.
  */
-function outcomeDataValidationMapping(week, formData, namedRangeName) {
+function outcomeDataValidationMapping(week, formsData, namedRangeName) {
   try {
     namedRangeName = namedRangeName || `${LEAGUE}_OUTCOMES_${week}`;
     const namedRange = SpreadsheetApp.getActiveSpreadsheet().getRangeByName(namedRangeName);
@@ -2878,9 +2885,9 @@ function outcomeDataValidationMapping(week, formData, namedRangeName) {
     const numCols = namedRange.getNumColumns();
     
     Logger.log(`🔍 Checking named range: ${namedRangeName} (${numRows}x${numCols} cells)`);
-    const games = formData[week]?.gamePlan?.games;
+    const games = formsData[week]?.gamePlan?.games;
     if (!games) {
-      Logger.log(`❌ No games found in formData[${week}].gamePlan.games`);
+      Logger.log(`❌ No games found in formsData[${week}].gamePlan.games`);
       return false;
     }
     const gamesArray = games.map(contest => {
@@ -2934,7 +2941,7 @@ function outcomeDataValidationMapping(week, formData, namedRangeName) {
     }
     
   } catch (error) {
-    Logger.log(`Error validating named range: ${error.message}`);
+    Logger.log(`⚠️ Error validating named range: ${error.message}`);
     return false;
   }
 }
