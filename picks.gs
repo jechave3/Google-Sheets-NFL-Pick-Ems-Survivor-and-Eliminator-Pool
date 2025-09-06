@@ -2946,6 +2946,7 @@ function outcomeDataValidationMapping(week, formsData, namedRangeName) {
   }
 }
 
+
 // ============================================================================================================================================
 // FORM FUNCTIONS
 // ============================================================================================================================================
@@ -3822,7 +3823,7 @@ function buildFormFromGamePlan(gamePlan) {
     const docProps = PropertiesService.getDocumentProperties();
     const config = JSON.parse(docProps.getProperty('configuration'));
     const memberData = JSON.parse(docProps.getProperty('members'));
-    const week = gamePlan.week;
+    const week = parseInt(gamePlan.week, 10);
     const formName = gamePlan.formName;
 
       // 1. Get the validated helper objects.
@@ -3838,6 +3839,16 @@ function buildFormFromGamePlan(gamePlan) {
     const urlFormEdit = form.shortenFormUrl(form.getEditUrl());
     const urlFormPub = form.shortenFormUrl(form.getPublishedUrl());
     ss.toast(`Created form and generated links`,`✅ EMPTY FORM CREATED`);
+    Logger.log(`✅ Created empty form and generated links`);
+    
+    // FORM TO DATABASE SHEET LINKING
+    // Process to link spreadsheet created to backend database:
+    // 1. Pull sheets within database file
+    // 2. Create destination sheet
+    // 3. Review, with periodic waits, for a new sheet to appear within sheets listing
+    // 4. ID the sheet that is new
+    // 5. Archive any sheets that share the WK${week} name
+    // 6. Rename new sheet to WK${name}  
     try {
       // Get the initial count of sheets before linking
       const initialSheets = databaseSheet.getSheets();
@@ -3905,7 +3916,7 @@ function buildFormFromGamePlan(gamePlan) {
         Logger.log("DEBUG - Difference: " + JSON.stringify(updatedSheetNames.filter(name => !initialSheetNames.includes(name))));
         throw new Error("Could not identify the newly created response sheet.");
       }
-      Logger.log(`Found new response sheet: "${newResponseSheet.getName()}"`);
+      Logger.log(`🎯 Found new response sheet: "${newResponseSheet.getName()}"`);
 
       // Now let's rename and organize it
       const newSheetName = `WK${week}`;
@@ -3914,7 +3925,7 @@ function buildFormFromGamePlan(gamePlan) {
       const existingSheet = databaseSheet.getSheetByName(newSheetName);
       
       if (existingSheet) {
-        Logger.log(`An existing sheet named '${newSheetName}' was found. Archiving it now.`);
+        Logger.log(`💾 An existing sheet named '${newSheetName}' was found. Archiving it now.`);
         ss.toast(`Found a former WK${week} sheet in the database, archiving now`,`💾 OLD RESPONSES ARCHIVED`);
         let archiveIndex = 1;
         let archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
@@ -3935,8 +3946,8 @@ function buildFormFromGamePlan(gamePlan) {
       // Now safely rename the newly linked sheet
       newResponseSheet.setName(newSheetName);
       newResponseSheet.activate(); // Brings the new tab to the front
-      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`✅ DATABASE LINKED`);
-      Logger.log(`Successfully linked form and renamed response sheet to '${newSheetName}'.`);
+      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`🔗 DATABASE LINKED`);
+      Logger.log(`🔗 Successfully linked form and renamed response sheet to '${newSheetName}'.`);
     } catch (err) {
       // If linking fails, delete the form to avoid orphans
       DriveApp.getFileById(form.getId()).setTrashed(true);
@@ -3944,6 +3955,12 @@ function buildFormFromGamePlan(gamePlan) {
       throw new Error("Could not link form to the backend database. Please check permissions.");
     }
 
+    // FORM BUILDING OPERATIONS
+    
+    
+    const sStartWeek = parseInt(config.survivorStartWeek, 10);
+    const eStartWeek = parseInt(config.eliminatorStartWeek, 10);
+    
     const nameQuestion = form.addListItem().setTitle('Select Your Name').setRequired(true);
 
     // --- Build Pick'em Questions (if applicable) ---
@@ -4160,6 +4177,28 @@ function buildFormFromGamePlan(gamePlan) {
     }
     return err;
   }  
+}
+
+/**
+ * Eligibilty checking for members
+ */
+function isMemberEligible(member, contestType, week, config) {
+  if (!member || !member.active) return false;
+  const livesKey = contestType === 'survivor' ? 'sL' : 'eL';
+  const livesData = member[livesKey];
+  const startWeek = parseInt(config[`${contestType}StartWeek`], 10) || 1;
+  // For the official start week, all active members are eligible.
+  if (week === startWeek) {
+    return true;
+  }
+  // For subsequent weeks, check their life status from the previous week.
+  if (Array.isArray(livesData)) {
+    // New "lives array" format
+    return livesData[week - 2] > 0;
+  } else {
+    // Old number format (fallback)
+    return livesData > 0;
+  }
 }
 
 /**
