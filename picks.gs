@@ -3830,7 +3830,6 @@ function buildFormFromGamePlan(gamePlan) {
     const formsFolder = getFormsFolder(config.groupName || `${LEAGUE} Picks Pool`);
     const templateForm = getTemplateForm();
     let databaseSheet = getDatabaseSheet();
-    const databaseSheetId = databaseSheet.getId();
     
     // 2. Create the new form by copying the template.
     const newFormFile = DriveApp.getFileById(templateForm.getId()).makeCopy(formName, formsFolder);
@@ -3848,131 +3847,21 @@ function buildFormFromGamePlan(gamePlan) {
     // 3. Review, with periodic waits, for a new sheet to appear within sheets listing
     // 4. ID the sheet that is new
     // 5. Archive any sheets that share the WK${week} name
-    // 6. Rename new sheet to WK${name}  
-    try {
-      // Get the initial count of sheets before linking
-      const initialSheets = databaseSheet.getSheets();
-      const initialSheetNames = initialSheets.map(sheet => sheet.getName());
+    // 6. Rename new sheet to WK${name}
+    formDatabaseLinking(week,form,databaseSheet,ss);
 
-      // Set the form's destination. This creates a new sheet in the spreadsheet.
-      form.setDestination(FormApp.DestinationType.SPREADSHEET, databaseSheet.getId());
-      let waitPeriod = 1;
-      let updatedSheets = [];
-      let updatedSheetNames = [];
-      let foundNewSheet = false;
-      while (waitPeriod <= 40 && !foundNewSheet) {
-        // Wait a moment for Google to create the new sheet...
-        Utilities.sleep(500);
-        SpreadsheetApp.flush();
-        
-        // Re-fetch the spreadsheet to get the current state
-        databaseSheet = SpreadsheetApp.openById(databaseSheetId);
-        
-        // Get the updated list of sheets
-        updatedSheets = databaseSheet.getSheets();
-        updatedSheetNames = updatedSheets.map(sheet => sheet.getName());
-        
-        Logger.log(`Attempt ${waitPeriod}: Found ${updatedSheets.length} sheets: [${updatedSheetNames.join(', ')}]`);
-        
-        // Check if we have a new sheet
-        if (updatedSheets.length > initialSheets.length) {
-          Logger.log(`Success! Found new sheet after ${waitPeriod} attempts.`);
-          foundNewSheet = true;
-          break; // Exit the loop immediately
-        }
-        waitPeriod++;
-      }
-      if (!foundNewSheet) {
-        throw new Error(`Timed out waiting for new response sheet to be created after ${waitPeriod - 1} attempts.`);
-      }
-    
-      let newResponseSheet = null;
-
-      // Method 1: Find the sheet that wasn't there before
-      for (const sheet of updatedSheets) {
-        if (!initialSheetNames.includes(sheet.getName())) {
-          newResponseSheet = sheet;
-          break; // Exit as soon as we find it
-        }
-      }
-        
-      // Method 2: Fallback - look for sheets with "Form Responses" pattern
-      if (!newResponseSheet) {
-        Logger.log("Fallback: Looking for 'Form Responses' pattern...");
-        for (const sheet of updatedSheets) {
-          if (sheet.getName().includes('Form Responses')) {
-            // Check if this one is new by comparing against initial list
-            if (!initialSheetNames.includes(sheet.getName())) {
-              newResponseSheet = sheet;
-              break;
-            }
-          }
-        }
-      }
-      if (!newResponseSheet) {
-        // Debug: Show exactly what we found
-        Logger.log("DEBUG - Initial sheets: " + JSON.stringify(initialSheetNames));
-        Logger.log("DEBUG - Updated sheets: " + JSON.stringify(updatedSheetNames));
-        Logger.log("DEBUG - Difference: " + JSON.stringify(updatedSheetNames.filter(name => !initialSheetNames.includes(name))));
-        throw new Error("Could not identify the newly created response sheet.");
-      }
-      Logger.log(`🎯 Found new response sheet: "${newResponseSheet.getName()}"`);
-
-      // Now let's rename and organize it
-      const newSheetName = `WK${week}`;
-      
-      // Check if a sheet with the desired name already exists
-      const existingSheet = databaseSheet.getSheetByName(newSheetName);
-      
-      if (existingSheet) {
-        Logger.log(`💾 An existing sheet named '${newSheetName}' was found. Archiving it now.`);
-        ss.toast(`Found a former WK${week} sheet in the database, archiving now`,`💾 OLD RESPONSES ARCHIVED`);
-        let archiveIndex = 1;
-        let archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
-        
-        // Loop to find a unique archive name that doesn't already exist
-        while (databaseSheet.getSheetByName(archiveName) !== null) {
-          archiveIndex++;
-          archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
-        }
-        
-        // Rename and hide the old sheet
-        existingSheet.setName(archiveName);
-        existingSheet.hideSheet();
-        
-        Logger.log(`Successfully archived old sheet as '${archiveName}'.`);
-      }
-      
-      // Now safely rename the newly linked sheet
-      newResponseSheet.setName(newSheetName);
-      newResponseSheet.activate(); // Brings the new tab to the front
-      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`🔗 DATABASE LINKED`);
-      Logger.log(`🔗 Successfully linked form and renamed response sheet to '${newSheetName}'.`);
-    } catch (err) {
-      // If linking fails, delete the form to avoid orphans
-      DriveApp.getFileById(form.getId()).setTrashed(true);
-      Logger.log(`Failed to link form to spreadsheet and manage tab. Form deleted. Error: ${err.stack}`);
-      throw new Error("Could not link form to the backend database. Please check permissions.");
-    }
-
-    // FORM BUILDING OPERATIONS
-    
-    
-    const sStartWeek = parseInt(config.survivorStartWeek, 10);
-    const eStartWeek = parseInt(config.eliminatorStartWeek, 10);
-    
     const nameQuestion = form.addListItem().setTitle('Select Your Name').setRequired(true);
 
     // --- Build Pick'em Questions (if applicable) ---
-      if (config.pickemsInclude) {
-        ss.toast(`Creating pick 'ems questions for week ${week}`,`🏈 PICK 'EMS`);
-        // 1. Add a Section Header to act as the title for this part of the form.
-        form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
-        // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
-        if (config.pickemsAts) {
-          form.addSectionHeaderItem()
-            .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
-            .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
+    if (config.pickemsInclude) {
+      ss.toast(`Creating pick 'ems questions for week ${week}`,`🏈 PICK 'EMS`);
+      // 1. Add a Section Header to act as the title for this part of the form.
+      form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
+      // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
+      if (config.pickemsAts) {
+        form.addSectionHeaderItem()
+          .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
+          .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
       }
       buildPickemQuestions(ss, form, gamePlan, config);
       ss.toast(`Created pick 'ems questions for week ${week}`,`✅ PICK 'EMS DONE`);
@@ -4176,7 +4065,7 @@ function buildFormFromGamePlan(gamePlan) {
       Logger.log(`❌ Unable to trash new form or it didn't exist yet.`)
     }
     return err;
-  }  
+  }
 }
 
 /**
@@ -4200,6 +4089,135 @@ function isMemberEligible(member, contestType, week, config) {
     return livesData > 0;
   }
 }
+
+
+/**
+ * Form has a back-end database that stores its responses immediately for faster fetching.
+ * This document ensures that the pool members don't see the responses until they've been imported
+ * Newly created forms will generate their own new sheet within the document when linked
+ * The new sheet needs to be renamed to ensure the data goes where we can fetch it
+ */
+function formDatabaseLinking(week,form,databaseSheet,ss) {
+  week = week || fetchWeek();
+  ss = ss || fetchSpreadsheet();
+  databaseSheet = databaseSheet || getDatabaseSheet();
+  form = form || FormApp.openById(JSON.parse(PropertiesService.getDocumentProperties().getProperty('forms'))[week].formId);
+  if (form) {
+    try {
+      const databaseSheetId = databaseSheet.getId();
+      
+      // Get the initial count of sheets before linking
+      const initialSheets = databaseSheet.getSheets();
+      const initialSheetNames = initialSheets.map(sheet => sheet.getName());
+      Logger.log(databaseSheetId);
+      Logger.log(getDatabaseSheet().getId())
+      // Set the form's destination. This creates a new sheet in the spreadsheet.
+      form.setDestination(FormApp.DestinationType.SPREADSHEET, databaseSheetId);
+      let waitPeriod = 1;
+      let updatedSheets = [];
+      let updatedSheetNames = [];
+      let foundNewSheet = false;
+      while (waitPeriod <= 40 && !foundNewSheet) {
+        // Wait a moment for Google to create the new sheet...
+        Utilities.sleep(500);
+        SpreadsheetApp.flush();
+        
+        // Re-fetch the spreadsheet to get the current state
+        databaseSheet = SpreadsheetApp.openById(databaseSheetId);
+        
+        // Get the updated list of sheets
+        updatedSheets = databaseSheet.getSheets();
+        updatedSheetNames = updatedSheets.map(sheet => sheet.getName());
+        
+        Logger.log(`Attempt ${waitPeriod}: Found ${updatedSheets.length} sheets: [${updatedSheetNames.join(', ')}]`);
+        
+        // Check if we have a new sheet
+        if (updatedSheets.length > initialSheets.length) {
+          Logger.log(`Success! Found new sheet after ${waitPeriod} attempts.`);
+          foundNewSheet = true;
+          break; // Exit the loop immediately
+        }
+        waitPeriod++;
+      }
+      if (!foundNewSheet) {
+        throw new Error(`Timed out waiting for new response sheet to be created after ${waitPeriod - 1} attempts.`);
+      }
+    
+      let newResponseSheet = null;
+
+      // Method 1: Find the sheet that wasn't there before
+      for (const sheet of updatedSheets) {
+        if (!initialSheetNames.includes(sheet.getName())) {
+          newResponseSheet = sheet;
+          break; // Exit as soon as we find it
+        }
+      }
+        
+      // Method 2: Fallback - look for sheets with "Form Responses" pattern
+      if (!newResponseSheet) {
+        Logger.log("Fallback: Looking for 'Form Responses' pattern...");
+        for (const sheet of updatedSheets) {
+          if (sheet.getName().includes('Form Responses')) {
+            // Check if this one is new by comparing against initial list
+            if (!initialSheetNames.includes(sheet.getName())) {
+              newResponseSheet = sheet;
+              break;
+            }
+          }
+        }
+      }
+      if (!newResponseSheet) {
+        // Debug: Show exactly what we found
+        Logger.log("DEBUG - Initial sheets: " + JSON.stringify(initialSheetNames));
+        Logger.log("DEBUG - Updated sheets: " + JSON.stringify(updatedSheetNames));
+        Logger.log("DEBUG - Difference: " + JSON.stringify(updatedSheetNames.filter(name => !initialSheetNames.includes(name))));
+        throw new Error("Could not identify the newly created response sheet.");
+      }
+      Logger.log(`Found new response sheet: "${newResponseSheet.getName()}"`);
+
+      // Now let's rename and organize it
+      const newSheetName = `WK${week}`;
+      
+      // Check if a sheet with the desired name already exists
+      const existingSheet = databaseSheet.getSheetByName(newSheetName);
+      
+      if (existingSheet) {
+        Logger.log(`An existing sheet named '${newSheetName}' was found. Archiving it now.`);
+        ss.toast(`Found a former WK${week} sheet in the database, archiving now`,`💾 OLD RESPONSES ARCHIVED`);
+        let archiveIndex = 1;
+        let archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
+        
+        // Loop to find a unique archive name that doesn't already exist
+        while (databaseSheet.getSheetByName(archiveName) !== null) {
+          archiveIndex++;
+          archiveName = `WK${week}_ARCHIVE${archiveIndex}`;
+        }
+        
+        // Rename and hide the old sheet
+        existingSheet.setName(archiveName);
+        existingSheet.hideSheet();
+        
+        Logger.log(`Successfully archived old sheet as '${archiveName}'.`);
+      }
+      
+      // Now safely rename the newly linked sheet
+      newResponseSheet.setName(newSheetName);
+      newResponseSheet.activate(); // Brings the new tab to the front
+      Logger.log(`Successfully linked form and renamed response sheet to '${newSheetName}'.`);
+      ss.toast(`Backend database new response sheet found and renamed to WK${week}`,`✅ DATABASE LINKED`);
+      return { status: 'success'};
+    } catch (err) {
+      // If linking fails, delete the form to avoid orphans
+      DriveApp.getFileById(form.getId()).setTrashed(true);
+      Logger.log(`Failed to link form to spreadsheet and manage tab. Form deleted. Error: ${err.stack}`);
+      throw new Error("Could not link form to the backend database. Please check permissions.");
+      // return { status: 'failed' }
+    }
+  } else {
+    Logger.log('No form passed to database linking function, try again later');
+  }
+}
+
 
 /**
  * Adds a single, correctly filtered contest question to the form.
