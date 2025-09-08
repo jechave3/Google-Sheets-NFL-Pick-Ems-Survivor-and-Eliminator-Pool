@@ -4670,7 +4670,7 @@ function getFormImportData(week) {
     const docProps = PropertiesService.getDocumentProperties();
     const formsData = JSON.parse(docProps.getProperty('forms'));
     const memberData = JSON.parse(docProps.getProperty('members'));
-    let week = 1;
+    week = week || 1;
     if (formsData) {
       week = week || Math.max(...Object.keys(formsData).map(key => parseInt(key)));
       Logger.log(week);
@@ -4698,7 +4698,7 @@ function getFormImportData(week) {
     const matchups = getInvalidPickMatchups();
     
     // 4. Determine if a partial import should be offered.
-    const allMembersResponded = syncResult.totalRespondents === memberData.memberOrder.length;
+    const allMembersResponded = syncResult?.totalRespondents ? syncResult.totalRespondents === memberData.memberOrder.length : false;
     const isMembershipLocked = config.membershipLocked;
     const offerPartialImport = !(allMembersResponded && isMembershipLocked);
 
