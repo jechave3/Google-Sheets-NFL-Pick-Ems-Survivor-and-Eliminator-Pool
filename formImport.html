@@ -240,7 +240,7 @@
 
       // --- 5. Populate Options and Submit Logic ---
       const optionsContainer = document.getElementById('options-container');
-      const gamePlanGames = data.gamePlanGames.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
+      const gamePlanGames = data.gamePlanGames.flatMap(g => [`${g.awayTeam} @ ${g.homeTeam}`,`${g.awayTeam} VS ${g.homeTeam}`]);
       const startedGames = new Set(data.startedGames);
 
       pastGames = gamePlanGames.filter(g => startedGames.has(g));
