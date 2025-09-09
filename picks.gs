@@ -4259,6 +4259,7 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
  */
 function buildPickemQuestions(ss, form, gamePlan, config) {
   Logger.log("🏈 Building Pick'em questions...");
+  let tiebreakerMatchup;
   gamePlan.games.forEach(game => {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
