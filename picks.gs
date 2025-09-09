@@ -1063,7 +1063,7 @@ function setupSheets() {
         eliminator.activate();
       }
     } else {
-      try{ss.deleteSheet(ss.getSheetByName('SURVIVOR'));} catch (err) {}
+      try{ss.deleteSheet(ss.getSheetByName('ELIMINATOR'));} catch (err) {}
     }     
     
     // Creates Summary Record Sheet
