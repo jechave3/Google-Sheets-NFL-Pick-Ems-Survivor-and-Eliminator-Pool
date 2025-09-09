@@ -2808,6 +2808,34 @@ function updateSheetsWithApiOutcomes(ss, week, completedGames, gamePlan) {
         }
       }
     }
+    if (config.tiebreakerInclude) {
+      if (formsData[week].gamePlan.games.length = completedGames.length) {
+        const tiebreakerMatchup = completedGames[completedGames.length-1]
+        let score = parseInt(tiebreakerMatchup.awayScore) + parseInt(tiebreakerMatchup.homeScore);
+        if (score) {
+          let weeklySheetTiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}_OUTCOME`);
+          if (weeklySheetTiebreakerRange) {
+            weeklySheetTiebreakerRange.setValue(score);
+            Logger.log(`👔 Successfully placed tiebreaker value using the designated tiebreaker outcome named range for week ${week}.`)
+          } else {
+            let weeklySheetGroupTiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`); // If the outcome cell isn't established
+            weeklySheetTiebreakerRange = weeklySheetGroupTiebreakerRange.getSheet().getRange(weeklySheetGroupTiebreakerRange.getLastRow()+3,weeklySheetGroupTiebreakerRange.getColumn());
+            if (weeklySheetTiebreakerRange) {
+              weeklySheetTiebreakerRange.setValue(score);
+              Logger.log(`👔 Successfully placed tiebreaker value using the tiebreaker column (fallback) for week ${week}.`)
+            }
+          }
+        } else {
+          Logger.log(`❗👔 Found a tiebreaker score of ${score} but was unable to place it`);
+          ss.toast(`👔 Found a tiebreaker score of ${score} but was unable to place it`,`❗ TIEBREAKER NOT PLACED`);
+        }
+      } else {
+        Logger.log(`⏩ Games for the week was not equal to the total games on the week, skipping tiebreaker for now.`)
+        ss.toast(`Games for the week was not equal to the total games on the week, skipping tiebreaker for now.`,`⏩ TIEBREAKER NOT AVAILABLE`)
+      }
+    } else {
+      Logger.log(`👔 No tiebreaker configured for the pool, skipping for now.`)
+    }
   }
 
   const outcomesSheet = ss.getSheetByName(`${LEAGUE}_OUTCOMES`);
