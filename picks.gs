@@ -3919,10 +3919,10 @@ function buildFormFromGamePlan(gamePlan) {
       firstWeekContestPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
       
       if (survivorIsActive && week === parseInt(config.survivorStartWeek, 10)) {
-        addContestQuestion(form, 'survivor', {}, config, gamePlan); // Pass empty member object
+        addContestQuestion(form, 'survivor', {}, config.survivorAts,config.survivorStartWeek, gamePlan); // Pass empty member object
       }
       if (eliminatorIsActive && week === parseInt(config.eliminatorStartWeek, 10)) {
-        addContestQuestion(form, 'eliminator', {}, config, gamePlan); // Pass empty member object
+        addContestQuestion(form, 'eliminator', {}, config.eliminatorAts,config.eliminatorStartWeek, gamePlan); // Pass empty member object
       }
     }
 
