@@ -5439,6 +5439,7 @@ function deleteOnEditTrigger() {
  */
 function onEditTrigger(e) {
   const range = e.range;
+  const ss = fetchSpreadsheet();
   const sheet = range.getSheet();
   const sheetName = sheet.getName();
   
@@ -5457,7 +5458,7 @@ function onEditTrigger(e) {
     if (editedRow > 3) {
       week = Math.ceil(editedCol / 2);
     }
-  } 
+  }
   // --- Check 2: Was the edit on a weekly sheet (e.g., "Week 3")? ---
   else if (sheetName.startsWith(weeklySheetPrefix)) {
     // Now, use a regex to be more precise and extract the week number.
@@ -5487,18 +5488,18 @@ function onEditTrigger(e) {
   // --- Guard Clause 3: Final check to see if a form was even created for this week. ---
   const formsData = fetchProperties('forms');
   if (!formsData[week]) {
-    Logger.log(`Edit detected for Week ${week}, but no form exists. Aborting process.`);
+    Logger.log(`❌ Edit detected for Week ${week}, but no form exists. Aborting process.`);
     return;
   }
 
   // --- If all checks pass, call the heavy lifter ---
-  SpreadsheetApp.getActiveSpreadsheet().toast(`Change detected for Week ${week}. Processing scores...`, 'Updating', 5);
+  ss.toast(`Change detected for Week ${week}. Processing scores...`, 'Updating', 5);
   
   try {
     evalSurvElimStatus(week, sheetName);
-    SpreadsheetApp.getActiveSpreadsheet().toast(`✅ Pool Statuses for Week ${week} have been updated!`);
+    ss.toast(`✅ Pool Statuses for Week ${week} have been updated!`);
   } catch (err) {
-    SpreadsheetApp.getActiveSpreadsheet().toast(`Error: ${err.message}`, '❌ Update Failed', 10);
+    ss.toast(`Error: ${err.message}`, '❌ Update Failed', 10);
     // Revert the change that triggered the error to signal failure to the user.
     if (e.oldValue !== undefined) {
       range.setValue(e.oldValue);
@@ -5513,6 +5514,7 @@ function onEditTrigger(e) {
       range2.getLastColumn() >= range1.getColumn();
   }
 }
+
 
 /**
  * [THE DEFINITIVE HEAVY LIFTER] Evaluates and updates Survivor and Eliminator statuses for a given week.
