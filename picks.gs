@@ -4813,10 +4813,16 @@ function executePickImport(week, importOnlyStartedGames) {
       });
       // --- Prepare Data for Writing (Unchanged) ---
       const picksRange = ss.getRangeByName(`${LEAGUE}_PICKS_${week}`);
-      const tiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`);
-      let tiebreakers = tiebreakerRange.getValues();
-      const commentRange = ss.getRangeByName(`COMMENTS_${week}`);
-      let comments = commentRange.getValues();
+      let tiebreakers;
+      if (config.tiebreakerInclude) {
+        const tiebreakerRange = ss.getRangeByName(`${LEAGUE}_TIEBREAKER_${week}`);
+        if (tiebreakerRange) tiebreakers = tiebreakerRange.getValues();
+      }
+      let comments;
+      if (!config.commentsExclude) {
+        const commentRange = ss.getRangeByName(`COMMENTS_${week}`);
+        if (commentRange) comments = commentRange.getValues();
+      }
       
       if (!picksRange) throw new Error(`Named range '${LEAGUE}_PICKS_${week}' not found.`);
       const picksData = picksRange.getValues();
