@@ -1,7 +1,7 @@
 /** GOOGLE SHEETS FOOTBALL PICK 'EMS, SURVIVOR, & ELIMINATOR TOOL | 2025 Edition
  * Script Library for League Creator & Management Platform
  * v1.0
- * 09/09/2025
+ * 09/10/2025
  * 
  * Created by Ben Powers
  * ben.powers.creative@gmail.com
@@ -167,7 +167,11 @@ const configTabColor = "#ff9561";
 const generalTabColor = "#aaaaaa";
 const winnersTabColor = "#ffee00";
 const survElimTabColors = {"survivor":"#ffee00","eliminator":"#fca503"}
-
+const nameValidation = FormApp.createTextValidation()
+  .setHelpText('Enter a minimum of 2 characters, up to 30.')
+  .requireTextMatchesPattern(".{2,30}")
+  .build();
+  
 const scheduleTabColor = "#472a24";
 
 const LEAGUE_DATA = {
@@ -1008,7 +1012,8 @@ function setupSheets() {
     const year = fetchYear();
     let week = fetchWeek();
     
-    outcomesSheet(ss);
+    if (!ss.getSheetByName(`${LEAGUE}_OUTCOMES`)) outcomesSheet(ss);
+
     Logger.log(`Deployed ${LEAGUE} Outcomes sheet`);
     if (config.pickemsInclude) {
       // Creates Weekly Totals Record Sheet
@@ -2266,7 +2271,7 @@ function fetchGames(week) {
     return games;
   }
   catch (err) {
-    let text = 'Attempted to fetch NFL matches for week ' + week + ' but no NFL data exists, fetching now...';
+    let text = `Attempted to fetch ${LEAGUE} matches for week ${week} but no ${LEAGUE} data exists, fetching now...`;
     Logger.log(text);
     ss.toast(text);
     fetchSchedule(ss,null,week);
@@ -2985,16 +2990,16 @@ function outcomeDataValidationMapping(week, formsData, namedRangeName) {
  */
 function getFormDashboardData() {
   try {
-    const allProps = PropertiesService.getDocumentProperties().getProperties();
+    const docProps = PropertiesService.getDocumentProperties();
     
-    // --- [THE FIX] Provide robust defaults for all major properties ---
-    const config = JSON.parse(allProps['configuration'] || '{}');
-    const memberData = JSON.parse(allProps['members'] || '{ "memberOrder": [], "members": {} }');
-    const formsObject = JSON.parse(allProps['forms'] || '{}');
+    // --- Provide robust defaults for all major properties ---
+    const config = JSON.parse(docProps.getProperty('configuration')) || {};
+    const memberData = JSON.parse(docProps.getProperty('members')) || { "memberOrder": [], "members": {} };
+    const formsObject = JSON.parse(docProps.getProperty('forms')) || {};
     
     const apiWeek = fetchWeek(null, true);
     
-    let forms = [];
+    let formsList = [];
     
     // 1. Find all form data from the forms object
     for (const week in formsObject) {
@@ -3003,47 +3008,49 @@ function getFormDashboardData() {
       if (!form) continue; // Skip if the form entry is null for some reason
 
       // Create a new object to avoid modifying the original
-      const formsData = { 
+      const formDetails = { 
         week: parseInt(week),
         ...form
       };
       // 2. Augment the data, using safe fallbacks for every value
       try {
-        formsData.isActive = FormApp.openById(formsData.formId).isAcceptingResponses();
+        formDetails.isActive = FormApp.openById(formDetails.formId).isAcceptingResponses();
       } catch (err) {
-        formsData.isActive = false;
+        formDetails.isActive = false;
       }
-      
-      formsData.respondents = form.respondents;
-      formsData.responseCount = form.respondents.length;
-      formsData.nonRespondents = form.nonRespondents;
+      const gamePlan = formDetails.gamePlan;
+      formDetails.respondents = form.respondents;
+      formDetails.responseCount = form.respondents.length;
+      formDetails.nonRespondents = form.nonRespondents;
 
-      formsData.membershipLocked = formsData.gamePlan?.membershipLocked || false;
-      formsData.newMembers = form.newMembers;
-      formsData.gameCount = formsData.gamePlan?.games?.length || 0;
+      formDetails.membershipLocked = gamePlan?.membershipLocked || false;
+      formDetails.newMembers = form.newMembers;
+      formDetails.gameCount = gamePlan?.games?.length || 0;
       
-      formsData.pickemsInclude = formsData.gamePlan?.pickemsInclude || false;
-      formsData.pickemsAts = formsData.gamePlan?.pickemsAts || false;
-      formsData.survivorInclude = formsData.gamePlan?.survivorInclude  || false;
-      formsData.survivorAts = formsData.gamePlan?.survivorAts  || false;
-      formsData.eliminatorInclude = formsData.gamePlan?.eliminatorInclude  || false;
-      formsData.eliminatorAts = formsData.gamePlan?.eliminatorAts  || false;;
-      forms.push(formsData);
+      formDetails.pickemsInclude = gamePlan?.pickemsInclude || false;
+      formDetails.pickemsAts = gamePlan?.pickemsAts || false;
+      formDetails.survivorInclude = gamePlan?.survivorInclude  || false;
+      formDetails.survivorAts = gamePlan?.survivorAts  || false;
+      formDetails.eliminatorInclude = gamePlan?.eliminatorInclude  || false;
+      formDetails.eliminatorAts = gamePlan?.eliminatorAts  || false;;
+      formsList.push(formDetails);
     }
     
-    forms.sort((a, b) => a.week - b.week);
+    formsList.sort((a, b) => a.week - b.week);
     
     // --- Calculation logic with safe defaults ---
     const totalMembers = memberData.memberOrder?.length || 0;
-    const totalResponses = forms.reduce((acc, f) => acc + f.responseCount, 0);
-    const totalPossibleResponses = totalMembers * forms.length;
-    
+    const totalResponses = formsList.reduce((acc, f) => acc + f.responseCount, 0);
+    const totalPossibleResponses = totalMembers * formsList.length;
+    const templateId = docProps.getProperty('templateId');
+    Logger.log(templateId);
     return {
       groupName: config.groupName || `${LEAGUE} Picks Pool`,
-      forms: forms,
+      forms: formsList,
       totalMembers: totalMembers,
       apiWeek: apiWeek,
-      overallResponseRate: totalPossibleResponses > 0 ? (totalResponses / totalPossibleResponses) : 0
+      templateId: templateId, // Future use in formManager panel
+      overallResponseRate: totalPossibleResponses > 0 ? (totalResponses / totalPossibleResponses) : 0      
     };
   } catch (error) {
     Logger.log("Error in getFormDashboardData: ", error);
@@ -3335,7 +3342,8 @@ function launchFormBuilder() {
     if (ui.alert(`Configuration Missing`, `No configuration data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
       launchConfiguration();
     } else {
-      showToast('Form creation cancelled: No configuration found.');
+      Logger.log('⛔ Form creation canceled due to no configuration found.');
+      ss.toast('Form creation canceled due to no configuration found.',`⛔ NO SCHEDULE DATA`);
     }
     return;
   }
@@ -3344,17 +3352,27 @@ function launchFormBuilder() {
   const config = JSON.parse(docProps.getProperty('configuration'));
   let openEnrollment = false;
   if (!docProps.getProperty('members')) {
-    Logger.log(`No members data present.`);
-    if (ui.alert(`Members Missing`, `No members data found...`, ui.ButtonSet.OK_CANCEL) === ui.Button.OK) {
+    Logger.log(`👻 No members found in your setup.`);
+    ss.toast(`No members found in your setup.`,`👻 EMPTY MEMBERS`);
+    let alertText = `No members data found. `;
+    if (config.membershipLocked) {
+      alertText += `Would you like to configure some initial members to be selectable via the dropdown on the form?\n\nYou have your pool membership locked, selecting "YES" will bring up the "Member Management" panel to enter initial members. Then restart the form builder when completed.\n\nIf you select "NO", the membership will be unlocked and a text entry box will be provided for the first week of the form for all members to join.`;
+    } else {
+      alertText += `Your membership is already set to open for joining via the form. However, would you like to enter any initial members?\n\nSelecting "YES" will bring up the "Member Management" panel to enter initial members. Then restart the form builder when completed.\n\nIf you select "NO", a text entry box will be provided for the first week of the form for all members to join.`;
+    }
+    let membersMissing = ui.alert(`⚠️ No Members Configured Yet!`, ui.ButtonSet.YES_NO_CANCEL);
+    if (membersMissing === ui.Button.YES) {
       launchMemberPanel();
       return;
     } else {
       if (config.membershipLocked) {
         config.membershipLocked = false;
         saveProperties('configuration', config);
-        showToast('Membership has been unlocked.', 'Notice');
+        ss.toast('Membership has been unlocked.', '🔓 MEMBERSHIP UNLOCKED');
+        openEnrollment = true;
+      } else {
+        ss.toast('Cofirmed open enrollment for form (text field entry for all members in initial week), moving on.', '🔓 OPEN ENROLLMENT');
       }
-      openEnrollment = true;
     }
   }
 
@@ -3373,7 +3391,7 @@ function launchFormBuilder() {
         showToast(`Fetching ${LEAGUE} schedule, this may take a moment...`, 'In Progress');
         // Let the function auto-detect the year and current week, set auto=false, overwrite=true
         fetchSchedule(ss, null, null, false, true); 
-        showToast('✅ Schedule data imported successfully!', 'Success');
+        ss.toast('Schedule data imported successfully!', '✅ SCHEDULE DATA IMPORTED');
         // After fetching, we can proceed.
       } catch (err) {
         ui.alert('Error', `Failed to fetch schedule data: ${err.message}`, ui.ButtonSet.OK);
@@ -3381,17 +3399,17 @@ function launchFormBuilder() {
       }
     } else {
       // User declined to fetch the data
-      showToast('Form creation cancelled: Schedule data is required.');
+      Logger.log('⛔ Form creation canceled, schedule data is required and declined to be brought in.');
+      ss.toast('Form creation canceled, schedule data is required and declined to be brought in.',`⛔ NO SCHEDULE DATA`);
       return;
     }
   }
 
-  // --- Final Steps ---
-  const isFirstRun = docProps.getProperty('hasCreatedFirstForm') !== 'true';
   try {
-    if (isFirstRun || !checkFileExists(docProps.getProperty('templateId'))) {
-      docProps.setProperty('hasCreatedFirstForm', 'false');
-      handleFirstFormCreation();
+    if (!checkFileExists(docProps.getProperty('templateId'))) {
+      Logger.log(`📄 A template file needs to be created, routing to prompts...`);
+      ss.toast(`A template file needs to be created, routing to prompts...`,`📄 TEMPLATE FILE NEEDED`);
+      templateCreationPrompt(ss);
     } else {
       const htmlTemplate = HtmlService.createTemplateFromFile('formCreatorPanel');
       const htmlOutput = htmlTemplate.evaluate().setWidth(700).setHeight(210);
@@ -3406,12 +3424,11 @@ function launchFormBuilder() {
 /**
  * Encapsulates the entire first-run and theme customization workflow.
  */
-function handleFirstFormCreation() {
-  const ui = SpreadsheetApp.getUi();
-  const docProps = PropertiesService.getDocumentProperties();
+function templateCreationPrompt(ss,ui) {
+  ui = ui || fetchUi();
   try {
     const templateForm = getTemplateForm();
-    Logger.log('Template Form ' + templateForm) ;
+    Logger.log('📄 Template Form ' + templateForm.getId()) ;
     if (!templateForm) return;
 
     let response = ui.alert(
@@ -3420,14 +3437,12 @@ function handleFirstFormCreation() {
       ui.ButtonSet.YES_NO
     );
     
-    docProps.setProperty('hasCreatedFirstForm', 'true');
-    
     if (response === ui.Button.YES) {
-      showLinkDialog(templateForm.getEditUrl(), 'Template Customization', 'Open Your Template',`Once you've optionally updated the header image and color palette, restart the form creation function. Note: changing the header image should automatically modify the color palette`);
+      showLinkDialog(templateForm.getEditUrl(), '🎨 Template Customization', 'Open Your Template',`Once you've optionally updated the header image and color palette, restart the form creation function.\n\nNote: changing the header image should automatically modify the color palette.`);
     }
   } catch (err) {
-    if (err.message.includes("CANCELLED_BY_USER")) {
-      showToast('Form creation cancelled.');
+    if (err.message.includes("CANCELED_BY_USER")) {
+      ss.toast('Form creation canceled by user when running a form building operation',`⛔ FORM CREATION CANCELED`);
     } else {
       ui.alert('An unexpected error occurred: ' + err.message);
     }
@@ -3850,6 +3865,7 @@ function buildFormFromGamePlan(gamePlan) {
     const ss = fetchSpreadsheet();
     const docProps = PropertiesService.getDocumentProperties();
     const config = JSON.parse(docProps.getProperty('configuration'));
+    const formsData = JSON.parse(docProps.getProperty('forms'));
     const memberData = JSON.parse(docProps.getProperty('members'));
     const week = parseInt(gamePlan.week, 10);
     const formName = gamePlan.formName;
@@ -3878,15 +3894,57 @@ function buildFormFromGamePlan(gamePlan) {
     // 6. Rename new sheet to WK${name}
     formDatabaseLinking(week,form,databaseSheet,ss);
 
-    const nameQuestion = form.addListItem().setTitle('Select Your Name').setRequired(true);
+    // ESTABLISH ALL STATES
+    const pickems = config.pickemsInclude;
+    const pickemsAts = gamePlan.pickmesAts;
 
-    // --- Build Pick'em Questions (if applicable) ---
-    if (config.pickemsInclude) {
+    let survivor = gamePlan.survivorInclude;
+    const survivorAts = gamePlan.survivorAts;
+    const survivorStart = parseInt(config.survivorStartWeek,10) == week;
+    
+    let eliminator = gamePlan.eliminatorInclude;
+    const eliminatorAts = gamePlan.eliminatorAts;
+    const eliminatorStart = parseInt(config.eliminatorStartWeek,10) == week;
+
+    const hasMembers = memberData.memberOrder && memberData.memberOrder.length > 0;
+    const firstWeek = (forms ? (Object.keys(forms).length > 0 ? false : true) : true);
+    ss.toast(`No other forms detected, assuming this week (${week}) is the start of your group`,`🚀 START WEEK DETECTED`);
+    Logger.log(`🚀 No other forms detected, assuming this week (${week}) is the start of your group`);
+
+    // FORM BUILDING ROUTER
+    
+    /// 1. NAME QUESTION
+    let nameQuestion, welcomeHeader;
+    // In the event of no members, we shift away from name choices and simply create a text box for name entry to start the pool up
+    if (hasMembers) {
+      nameQuestion = form.addListItem()
+        .setTitle('Select Your Name')
+        .setRequired(true);
+      if (gamePlan.membershipLocked) {
+        nameQuestion.setHelpText('✏️ New users will be prompted to enter a name on the next page');
+      }
+    } else {
+      nameQuestion = form.addTextItem()
+        .setTitle('Enter Your Name')
+        .setHelpText('Please enter your name as it will appear in the pool.')
+        .setRequired(true)
+        .setValidation(nameValidation); // Validation is with constants at beginning of document
+    }
+    if (firstWeek || week == 1) {
+      welcomeHeader = form.addSectionHeaderItem()
+        .setTitle(`Welcome to the ${config.year} ${LEAGUE} season!`)
+      if (config.welcomeLetter) {
+        welcomeHeader.setHelpText(config.welcomeLetter);
+      }
+    }
+
+    /// 2. PICK 'EMS
+    if (pickems) {
       ss.toast(`Creating pick 'ems questions for week ${week}`,`🏈 PICK 'EMS`);
       // 1. Add a Section Header to act as the title for this part of the form.
       form.addSectionHeaderItem().setTitle("🏈 Weekly Pick 'Em Selections");
       // 2. If ATS is enabled for Pick'em, add a very clear instructional message.
-      if (config.pickemsAts) {
+      if (pickemsAts) {
         form.addSectionHeaderItem()
           .setTitle('🔢 Instructions: Pick Against the Spread (ATS)')
           .setHelpText('For each game, select the team you believe will win WITH the point spread. The point spread is listed in the help text of each question.');
@@ -3894,10 +3952,10 @@ function buildFormFromGamePlan(gamePlan) {
       buildPickemQuestions(ss, form, gamePlan, config);
       ss.toast(`Created pick 'ems questions for week ${week}`,`✅ PICK 'EMS DONE`);
     } else {
-      Logger.log(`No pick 'ems pool active, moving on to survivor/eliminator`)
+      Logger.log(`❌ No pick 'ems pool active, moving on to survivor/eliminator`)
     }
 
-    const finalSubmitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
+    const submitPage = form.addPageBreakItem().setGoToPage(FormApp.PageNavigationType.SUBMIT);
     
     // --- Build Survivor/Eliminator Pages ---
     const pageDestinations = {}; // Will map memberId -> destination page
@@ -4020,20 +4078,20 @@ function buildFormFromGamePlan(gamePlan) {
         if (week === parseInt(config.survivorStartWeek, 10) || week === parseInt(config.eliminatorStartWeek, 10)) {
           // It's the first week, everyone is eligible and goes to the common page.
           isEligible = survivorIsActive || eliminatorIsActive;
-          destination = isEligible ? firstWeekContestPage : finalSubmitPage;
+          destination = isEligible ? firstWeekContestPage : submitPage;
         } else {
           // For later weeks, use the page map created by your individual page logic.
-          destination = pageDestinations[memberId] || finalSubmitPage;
-          isEligible = (destination !== finalSubmitPage);
+          destination = pageDestinations[memberId] || submitPage;
+          isEligible = (destination !== submitPage);
         }
 
-        if (isEligible || config.pickemsInclude) {
+        if (isEligible || pickems) {
           nameChoices.push(nameQuestion.createChoice(member.name, destination));
           eligibleMembers.push(member.name);
         }
 
         // // A member is eligible for the dropdown if they have a custom page OR if pick'em is enabled.
-        // if (destination !== finalSubmitPage || config.pickemsInclude) {
+        // if (destination !== submitPage || pickems) {
         //   nameChoices.push(nameQuestion.createChoice(member.name, destination));
         //   eligibleMembers.push(member.name);
         // }
@@ -4060,7 +4118,7 @@ function buildFormFromGamePlan(gamePlan) {
     }
     
     if (nameChoices.length === 0) {
-        nameChoices.push(nameQuestion.createChoice("No members eligible", finalSubmitPage));
+        nameChoices.push(nameQuestion.createChoice("No members eligible", submitPage));
         form.setDescription(`⚠️ Warning: No members are currently eligible to make picks. Please check Member Management or unlock membership.`);
     }
 
@@ -4286,8 +4344,8 @@ function addContestQuestion(form, contestType, member, isAts, startWeek, allTeam
  * Builds all Pick'em related questions on the form.
  */
 function buildPickemQuestions(ss, form, gamePlan, config) {
-  Logger.log("🏈 Building Pick'em questions...");
   let tiebreakerMatchup;
+  Logger.log("🏈 Building Pick'em questions...");
   gamePlan.games.forEach(game => {
     let item = form.addMultipleChoiceItem();
     const evening = game.hour >= 17;
@@ -4350,12 +4408,6 @@ function buildNewUserPage(ss, form, config, gamePlan) {
   const newUserPage = form.addPageBreakItem().setTitle('New User Signup');
   newUserPage.setGoToPage(FormApp.PageNavigationType.SUBMIT);
 
-  // 2. Add the "Name" input question.
-  const nameValidation = FormApp.createTextValidation()
-    .setHelpText('Enter a minimum of 2 characters, up to 30.')
-    .requireTextMatchesPattern(".{2,30}") // A simpler, more reliable regex for length
-    .build();
-    
   form.addTextItem()
     .setTitle('Enter Your Name')
     .setHelpText('Please enter your name as it will appear in the pool.')
@@ -4844,7 +4896,9 @@ function executePickImport(week, importOnlyStartedGames) {
           if (game) {
             // Apply the import filter first for efficiency
             const matchupShortName = `${game.awayTeam} @ ${game.homeTeam}`;
-            if (importOnlyStartedGames && !startedGames.has(matchupShortName)) {
+            const matchupVsName = `${game.awayTeam} VS ${game.homeTeam}`;
+            
+            if (importOnlyStartedGames && !startedGames.has(matchupShortName) && !startedGames.has(matchupVsName)) {
               continue; // Skip if it's an upcoming game
             }
             
@@ -4866,7 +4920,7 @@ function executePickImport(week, importOnlyStartedGames) {
       
       // --- 4. Write Data Back to the Sheet (Unchanged) ---
       picksRange.setValues(picksData);
-      tiebreakerRange.setValues(tiebreakers);
+      if (!importOnlyStartedGames) tiebreakerRange.setValues(tiebreakers);
       commentRange.setValues(comments);
       const text = `Successfully imported Pick 'Em data into week '${week}' sheet.`;
       Logger.log(`✅ ${text}`);
@@ -5270,20 +5324,19 @@ function populateSurvElimSheet(ss, parsedPicks, memberData, config, gamePlan, we
  * @param {Sheet} ss The active Spreadsheet object.
  * @param {string} contestType The type of sheet to update: 'survivor' or 'eliminator'.
  */
-function updateSurvElimSheet(ss, contestType) {
+function updateSurvElimSheet(ss, config, memberData, contestType) {
   contestType = contestType.toLowerCase();
   
-  // 1. Get the properties
-  const docProps = PropertiesService.getDocumentProperties();
-  let config = JSON.parse(docProps.getProperty('configuration')) || {};
-  let memberData = JSON.parse(docProps.getProperty('members')) || {};
+  // 1. Get the properties if needed
+  config = config || (JSON.parse(PropertiesService.getDocumentProperties().getProperty('configuration')) || {});
+  memberData = memberData || (JSON.parse(PropertiesService.getDocumentProperties().getProperty('members')) || {});
 
   const sheetName = contestType.toUpperCase();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     const text = `❗ '${sheetName}' sheet not found, creating it now...`;
     Logger.log(text);
-    ss.alert(text,`CREATING ${contestType.toUpperCase()} SHEET`);
+    ss.alert(text,`⭐ CREATING ${contestType.toUpperCase()} SHEET`);
     sheet = survElimSheet(ss,null,null,contestType);
   }
 
@@ -5295,11 +5348,12 @@ function updateSurvElimSheet(ss, contestType) {
   const picksRange = ss.getRangeByName(`${sheetName}_PICKS`);
   
   if (!namesRange || !picksRange) {
-    Logger.log(`Required named ranges for '${sheetName}' not found. Run the sheet builder.`);
+    Logger.log(`⚠️ Required named ranges for '${sheetName}' not found. Run the sheet builder.`);
     return;
   }
 
   const memberNamesOnSheet = namesRange.getValues().flat();
+  
   const picksData = picksRange.getValues(); // Get the full 2D array of picks
   
   // Create a map of name -> row index for fast lookups.
@@ -5310,6 +5364,9 @@ function updateSurvElimSheet(ss, contestType) {
   const newRevivesData = [];
   const newEliminatedData = [];
   let done = true;
+  let membersRemaining = memberNamesOnSheet.length;
+  let poolLivesRemaining = 0;
+  let totalRevives = 0;
   // 4. Loop through the members AS THEY APPEAR ON THE SHEET.
   memberNamesOnSheet.forEach(name => {
     const member = Object.values(memberData.members).find(m => m.name.toLowerCase() === name.toLowerCase());
@@ -5324,14 +5381,14 @@ function updateSurvElimSheet(ss, contestType) {
       // a) Build the "Dots of Life" string.
       const livesDots = totalLives > 1 ? '🟢'.repeat(currentLives) + '⚫'.repeat(Math.max(0, totalLives - currentLives)) : (currentLives > 0 ? '🟢' : '❌') ;
       newLivesData.push([livesDots]);
-
+      poolLivesRemaining += currentLives;
       // b) Get the revives count.
       newRevivesData.push([member[revivesKey] || 0]);
-
+      totalRevives += member[revivesKey];
       // c) Get the elimination week.
-      const elimWeek = member[`${contestType}EliminatedWeek`];
+      const elimWeek = member[`${contestType.toLowerCase().substring(0,1)}O`];
       newEliminatedData.push([elimWeek ? `Week ${elimWeek}` : '']);
-      
+
       // d) Update the pick colors for this member.
       const rowIndex = nameToRowIndexMap.get(name.toLowerCase());
       const evalKey = contestType === 'survivor' ? 'sE' : 'eE';
@@ -5341,12 +5398,19 @@ function updateSurvElimSheet(ss, contestType) {
         if (picksData[rowIndex][colIndex] !== '') {
           const cell = picksRange.getCell(rowIndex + 1, colIndex + 1);
           if (isCorrect === true) {
-            cell.setBackground('#d9ead3').setFontLine(null);
+            cell.setBackground('#c7fcc7').setFontLine(null);
           } else if (isCorrect === false) {
-            cell.setBackground('#f4cccc').setFontLine('line-through');
+            cell.setBackground('#ffccd6').setFontLine('line-through');
           }
         }
       });
+      const nameCell = namesRange.getCell(rowIndex + 1, namesRange.getColumn());
+      if (currentLives == 0) {
+        nameCell.setBackground('#ffccd6').setFontLine('line-through');
+        membersRemaining--;
+      } else {
+        nameCell.setBackground('#c7fcc7').setFontLine(null);
+      }
 
     } else {
       // If a member on the sheet isn't in our data, push blank values.
@@ -5356,6 +5420,11 @@ function updateSurvElimSheet(ss, contestType) {
     }
   });
 
+  // Set final row info
+  sheet.getRange(livesRange.getLastRow() + 1, livesRange.getColumn()).setValue(poolLivesRemaining);
+  sheet.getRange(revivesRange.getLastRow() + 1, revivesRange.getColumn()).setValue(totalRevives);
+  sheet.getRange(eliminatedRange.getLastRow() + 1, eliminatedRange.getColumn()).setValue(membersRemaining);
+
   // --- 5. Write the updated data to the sheet in a few, efficient calls ---
   livesRange.setValues(newLivesData);
   revivesRange.setValues(newRevivesData);
@@ -5364,7 +5433,7 @@ function updateSurvElimSheet(ss, contestType) {
     config[`${contestType}Done`] = done;
     saveProperties('configuration',config);
   }
-  Logger.log(`Successfully updated '${sheetName}' sheet.`);
+  Logger.log(`✅ Successfully updated '${sheetName}' sheet.`);
 }
 
 
@@ -5499,13 +5568,14 @@ function onEditTrigger(e) {
   }
 
   // --- If all checks pass, call the heavy lifter ---
-  ss.toast(`Change detected for Week ${week}. Processing scores...`, 'Updating', 5);
+  Logger.log(`🔄 Change detected for Week ${week}. Processing scores...`);
   
   try {
     evalSurvElimStatus(week, sheetName);
     ss.toast(`✅ Pool Statuses for Week ${week} have been updated!`);
   } catch (err) {
     ss.toast(`Error: ${err.message}`, '❌ Update Failed', 10);
+     Logger.log(`❌ Update Failed | Error: ${err.stack}`)
     // Revert the change that triggered the error to signal failure to the user.
     if (e.oldValue !== undefined) {
       range.setValue(e.oldValue);
@@ -5520,7 +5590,6 @@ function onEditTrigger(e) {
       range2.getLastColumn() >= range1.getColumn();
   }
 }
-
 
 /**
  * [THE DEFINITIVE HEAVY LIFTER] Evaluates and updates Survivor and Eliminator statuses for a given week.
@@ -5560,7 +5629,7 @@ function evalSurvElimStatus(week, sourceSheetName) {
     throw new Error(`Could not find a valid gamePlan with games for Week ${week}.`);
   }
 
-  const matchups = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
+  // const matchups = gamePlan.games.map(g => `${g.awayTeam} @ ${g.homeTeam}`);
   
   const outcomeMap = new Map();
   gamePlan.games.forEach((game, index) => {
@@ -5577,7 +5646,7 @@ function evalSurvElimStatus(week, sourceSheetName) {
       });
     }
   });
-  Logger.log(`Built Outcome Map for Week ${week}: Found ${outcomeMap.size} completed games.`);
+  Logger.log(`🏗 Built Outcome Map for Week ${week}: Found ${outcomeMap.size} completed games.`);
   // --- Step 3: Process Survivor Sheet ---
   if (gamePlan.survivorInclude && week >= config.survivorStartWeek) {
     processContest(ss, week, 'SURVIVOR', memberData, outcomeMap, config);
@@ -5593,10 +5662,10 @@ function evalSurvElimStatus(week, sourceSheetName) {
 
   // --- Step 6: (Optional) Check for contest end ---
   if (config.survivorInclude) {
-    updateSurvElimSheet(ss, 'survivor');
+    updateSurvElimSheet(ss, config, memberData, 'survivor');
   }
   if (config.eliminatorInclude) {
-    updateSurvElimSheet(ss, 'eliminator');
+    updateSurvElimSheet(ss, config, memberData, 'eliminator');
   }
 }
 
@@ -5613,6 +5682,7 @@ function evalSurvElimStatus(week, sourceSheetName) {
  * @returns {Object} The modified and updated memberData object.
  */
 function processContest(ss, week, contestType, memberData, outcomeMap, config) {
+  // Report on members before diving in:
   const sheet = ss.getSheetByName(contestType.toUpperCase());
   if (!sheet) return memberData;
 
@@ -5631,7 +5701,7 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
   const livesSetting = config[`${contestType.toLowerCase()}Lives`] || 1;
   const startWeek = config[`${contestType.toLowerCase()}StartWeek`] || 1;
   const picks = ss.getRangeByName(`${contestType}_PICKS`).getValues();
-
+  let poolLives = 0, poolMembers = [], poolMembersEliminated = [];
   names.forEach((name, rowIndex) => {
     const memberId = nameToIdMap.get(name.trim().toLowerCase());
     if (!memberId) return;
@@ -5688,10 +5758,24 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
     
     // Update the elimination week if they just ran out of lives.
     if (livesAtEndOfWeek === 0 && livesAtStartOfWeek > 0) {
-        member[`${contestType.toLowerCase().substring(0,1)}O`] = week; // Out week
+        member[`${contestType.toLowerCase().substring(0,1)}O`] = week; // Out week notation
+        Logger.log(`😵 ${member.name} was eliminated from the ${contestType.toLowerCase()} pool this week!`);
+    } else {
+      delete member[`${contestType.toLowerCase().substring(0,1)}O`]; // Out week removal
     }
-  });
+    poolLives += livesAtEndOfWeek;
+    if (livesAtEndOfWeek > 0) poolMembers.push(names[rowIndex]);
+    if (livesAtStartOfWeek > 0 && livesAtEndOfWeek == 0) poolMembersEliminated.push(names[rowIndex]);
 
+  });
+  if (poolLives > 0) {
+    Logger.log(`${contestType} remaining pool lives: ${poolLives}`);
+  } else {
+    Logger.log(`${contestType} POOL COMPLETED! The final members who were eliminated were ${poolMembersEliminated}.`);
+    let finalMembersString = `🔹` + poolMembersEliminated.join(`\n🔹 `);
+    const ui = fetchUi();
+    ui.alert(`Your ${contestType.toLowerCase()} pool was completed this week with the following members as final survivors:\n${finalMembersString}\n\nIf you'd like to restart the pool, go to configuration and set the start week to a new week past week ${week}.`,`✔️ ${contestType} COMPLETE!`, ui.ButtonSet.OK);
+  }
   return memberData;
 }
 
@@ -5706,7 +5790,7 @@ function processContest(ss, week, contestType, memberData, outcomeMap, config) {
  * @returns {boolean} True if the pick was correct against the spread.
  */
 function calculateAtsResult(pick, winner, loser, margin, spread) {
-  if (!spread || spread.toUpperCase() === 'PK' || spread.trim() === '0') {
+  if (!spread || spread.toUpperCase() === 'PK' || spread.trim() === '0' || spread.toUpperCase() === 'PUSH' || spread.toUpperCase() === 'EVEN') {
     // If it's a "pick'em", the pick is correct if they picked the winner.
     return pick === winner;
   }
@@ -5863,7 +5947,7 @@ function syncFormResponses(week) {
         const permanentId = generateUniqueId();
         
         memberData.memberOrder.push(permanentId);
-        membersData.members[permanentId] = createNewMember(
+        memberData.members[permanentId] = createNewMember(
           newUserName,
           false,
           config,
@@ -7507,7 +7591,7 @@ function summarySheet(ss,memberData,config) {
     formatRules.push(formatRuleOverallTot);
     // MNF TOTAL GRADIENT RULES
     let rangeMNFTot, rangeMNFRank, formatRuleMNFRank;
-    if (config.mnfInclude) {
+    if (!config.mnfExclude) {
       rangeMNFTot = sheet.getRange('R2C'+mnfCol+':R'+rows+'C'+mnfCol);
       //ss.setNamedRange('TOT_MNF',range);
       let formatRuleMNFTot = SpreadsheetApp.newConditionalFormatRule()
@@ -7610,15 +7694,16 @@ function summarySheet(ss,memberData,config) {
   }  
   sheet.setConditionalFormatRules(formatRules);
   // Creates all formulas for SUMMARY Sheet
-  summarySheetFormulas(headers, sheet,totalMembers);
+  summarySheetFormulas(headers, sheet,totalMembers,ss);
 
   return sheet;  
 }
 
 // UPDATES SUMMARY SHEET FORMULAS
-function summarySheetFormulas(headers,sheet,totalMembers) {
+function summarySheetFormulas(headers,sheet,totalMembers,ss) {
   let arr = [...headers] || ['PLAYER','TOTAL CORRECT','TOTAL RANK','MNF CORRECT','MNF RANK','AVG % CORRECT','AVG % CORRECT RANK','WEEKLY WINS','SURVIVOR LIVES','SURVIVOR (WEEK OUT)','ELIMINATOR LIVES','ELIMINATOR (WEEK OUT)','NOTES'];
   
+  ss = fetchSpreadsheet(ss);
   if (!sheet) {
     sheet = fetchSpreadsheet().getSheetByName('SUMMARY');  
   }
@@ -7879,8 +7964,9 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
 
   // Setting headers for the week's matchups with format of 'AWAY' + '@' + 'HOME', then creating a data validation cell below each
   let firstMatchCol = headers.length + 1;
-  let mnfCol, mnfStartCol, mnfEndCol, tnfStartCol, tnfEndCol, winCol, days = [], spreads = [], dayRowColors = [], bonuses = [], formatRules = [];
-  let mnf = false, tnf = false; // Preliminary establishing if there are Monday or Thursday games (false by default, fixed to true when looped through matchups)
+  let mnfCol, mnfStartCol = null;
+  let mnfEndCol, winCol, days = [], spreads = [], dayRowColors = [], bonuses = [], formatRules = [];
+  let mnf = false; // Preliminary establishing if there are Monday or Thursday games (false by default, fixed to true when looped through matchups)
   let rule, matches = contests.length;
   for ( let a in contests ) {
     let day = contests[a].dayName;
@@ -7888,14 +7974,12 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     let away = contests[a].awayTeam;
     let home = contests[a].homeTeam;
     // Establish start/stop of MNF games to record the tally
-    if ( day == 1 && evening ) {
-      mnf = true;
-      if ( mnfStartCol == undefined ) {
-        mnfStartCol = headers.length + 1;
-      }
+    if ( day == 'Monday' && evening ) {
+      if (!mnf) mnf = true;
+      if (!mnfStartCol) mnfStartCol = headers.length + 1;
       mnfEndCol = headers.length + 1;
+      Logger.log(`🔍 MNF matchup found`);
     }
-    let dayIndex = day + 3; // Day coloration function
     let writeCell = sheet.getRange(dayRow,firstMatchCol+(matches-1));
     let rule = SpreadsheetApp.newConditionalFormatRule()
       .whenFormulaSatisfied('=not(isblank(indirect(\"R'+outcomeRow+'C[0]\",false)))')
@@ -7914,6 +7998,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     rule = SpreadsheetApp.newDataValidation().requireValueInList([away,home,"TIE"], true).build();
     sheet.getRange(outcomeRow,headers.length).setDataValidation(rule);
   }
+
 
   const finalMatchCol = headers.length;
 
@@ -7995,6 +8080,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
   }
   if (config.tiebreakerInclude) {
     ss.setNamedRange(`${LEAGUE}_TIEBREAKER_${week}`,sheet.getRange(entryRowStart,tiebreakerCol,totalMembers,1));
+    ss.setNamedRange(`${LEAGUE}_TIEBREAKER_${week}_OUTCOME`,sheet.getRange(outcomeRow,tiebreakerCol)); // Tiebreaker Outcome
     let validRule = SpreadsheetApp.newDataValidation()
       .requireNumberBetween(0,150)
       .setHelpText('Must be an integer between 0 and 120')
@@ -8030,7 +8116,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     }
 
     // Formula to determine MNF win status sum (can be more than 1 for rare weeks)
-    if (config.mnfInclude && mnf) {
+    if (!config.mnfExclude && mnf) {
       sheet.getRange(row,mnfCol).setFormulaR1C1('=iferror(if(and(counta(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+firstMatchCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+finalMatchCol+')>0,counta(R[0]C'+firstMatchCol+':R[0]C'+finalMatchCol+')>0),if(mmult(arrayformula(if(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+'=R[0]C'+mnfStartCol+':R[0]C'+mnfEndCol+',1,0)),transpose(arrayformula(if(not(isblank(R[0]C'+mnfStartCol+':R[0]C'+mnfEndCol+')),1,0))))=0,0,mmult(arrayformula(if(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+'=R[0]C'+mnfStartCol+':R[0]C'+mnfEndCol+',1,0)),transpose(arrayformula(if(not(isblank(R[0]C'+mnfStartCol+':R[0]C'+mnfEndCol+')),1,0))))),),)');
     }
 
@@ -8056,7 +8142,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
     sheet.getRange(matchRow,winCol).setFormulaR1C1('=iferror(if(counta(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+firstMatchCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+finalMatchCol+')=value(regexextract(R'+dayRow+'C1,\"[0-9]+\")),if(countif(R'+entryRowStart+'C[0]:R'+entryRowEnd+'C[0],1)=0,\"TIE\",\"WIN\"),\"WIN\"),)');
   }
 
-  if (config.mnfInclude && mnf) {
+  if (!config.mnfExclude && mnf) {
     sheet.getRange(summaryRow,mnfCol).setFormulaR1C1('=iferror(if(counta(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+')=columns(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+'),\"MNF\"\&char(10)&(round(sum(mmult(arrayformula(if(R'+entryRowStart+'C'+mnfStartCol+':R'+entryRowEnd+'C'+mnfEndCol+'=R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+',1,0)),transpose(arrayformula(if(not(isblank(R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfStartCol+':R'+(isAts ? spreadOutcomeRow : outcomeRow)+'C'+mnfEndCol+')),1,0)))))/counta(R'+entryRowStart+'C'+mnfStartCol+':R'+entryRowEnd+'C'+mnfEndCol+'),3)*100)\&\"\%\",),)');
   }
 
@@ -8183,7 +8269,7 @@ function weeklySheet(ss,week,config,forms,memberData,displayEmpty) {
 
   // MNF GRADIENT RULE
   let formatRuleMNFEmpty, formatRuleMNF;
-  if (config.mnfInclude && mnf) {
+  if (!config.mnfExclude && mnf) {
     range = sheet.getRange('R'+entryRowStart+'C'+mnfCol+':R'+entryRowEnd+'C'+mnfCol);
     ss.setNamedRange('MNF_'+week,range);
     formatRuleMNFEmpty = SpreadsheetApp.newConditionalFormatRule()
@@ -8600,7 +8686,7 @@ function bonusRandomGameSet() {
     }
   }
   catch (err) {
-    Logger.log('No form exists for week ' + week + ' or there was an error getting the questions for the form.'); 
+    Logger.log('❌ No form exists for week ' + week + ' or there was an error getting the questions for the form.'); 
   }
 }
 
